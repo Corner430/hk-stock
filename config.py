@@ -28,8 +28,45 @@ STOP_LOSS_PCT = 0.08         # 止损线：亏损 8% 触发
 TAKE_PROFIT_PCT = 0.15       # 止盈线：盈利 15% 触发
 
 # 仓位管理
-MAX_POSITIONS = 99           # 不限制持仓数量
+MAX_POSITIONS = 10           # 最多持有10只股票
 MAX_INVESTED_CNY = 100000    # 总投入上限 = 总资金（不限制）
+
+# ── 风险管理参数 ──
+DRAWDOWN_WARN_PCT = 0.05     # 组合回撤警告线 5%
+DRAWDOWN_HALT_PCT = 0.10     # 组合回撤停买线 10%（停止新开仓）
+DRAWDOWN_REDUCE_PCT = 0.15   # 组合回撤减仓线 15%（强制减仓50%）
+
+# 时间止损
+TIME_STOP_DAYS = 20           # 持仓超过N个交易日且无显著涨幅则止损
+TIME_STOP_MIN_GAIN_PCT = 2.0  # 时间止损豁免条件：涨幅超过此值不触发
+
+# ATR 仓位管理
+ATR_PERIOD = 14               # ATR 计算周期
+ATR_RISK_PER_TRADE = 0.02     # 每笔交易风险占总资金比例（2%）
+ATR_MULTIPLIER = 2.0          # 止损距离 = ATR * multiplier
+
+# 分批建仓
+PARTIAL_BUILD_RATIOS = [0.3, 0.3, 0.4]  # 三次建仓比例
+
+# 分批止盈
+PARTIAL_TP_LEVELS = [
+    (0.10, 0.333),  # 盈利10%时卖出1/3
+    (0.20, 0.333),  # 盈利20%时再卖1/3
+    (0.30, 1.0),    # 盈利30%时清仓
+]
+
+# RSI 短周期（保留 RSI_PERIOD=14 兼容，新增短周期辅助信号）
+RSI_SHORT_PERIOD = 9
+
+# 板块热度权重
+SECTOR_HEAT_BOOST_MAX = 3     # 热门板块最大加分
+SECTOR_COLD_PENALTY_MAX = -2  # 冷门板块最大减分
+
+# 动量因子
+MOMENTUM_PERIOD = 20          # 动量计算周期（交易日）
+
+# 自由流通股比例
+MIN_FREE_FLOAT_PCT = 15.0     # 最低自由流通比例%
 
 # ── 调度配置 ──
 DAILY_ANALYSIS_TIME = (16, 30)      # 完整分析 + 交易（收盘后30分钟）

@@ -52,12 +52,19 @@ def buy(portfolio, ticker, name, price, shares, reason, date) -> tuple[bool, str
     return True, f"买入 {name}（{ticker}）{shares}股 @{price}HKD  花费¥{total_cost:.0f}"
 
 
-def sell(portfolio, ticker, name, price, shares, reason, date) -> tuple[bool, str]:
+def sell(portfolio, ticker, name, price, shares, reason, date,
+         lot_size: int = None) -> tuple[bool, str]:
     if ticker not in portfolio["positions"]:
         return False, f"{name} 无持仓"
     pos = portfolio["positions"][ticker]
     if pos["shares"] < shares:
         shares = pos["shares"]
+
+    # 碎股处理：如果卖出后剩余不足1手，则全部卖出
+    if lot_size and lot_size > 0:
+        remaining = pos["shares"] - shares
+        if 0 < remaining < lot_size:
+            shares = pos["shares"]  # 避免产生碎股
 
     revenue_hkd = price * shares
     fee_hkd = calc_trade_fee_hkd(revenue_hkd)
@@ -93,16 +100,34 @@ def auto_trade(analysis_data: dict) -> list[str]:
     today = datetime.now().strftime("%Y-%m-%d")
     logs = []
 
-    # Step1: 止损/止盈自动平仓
+    # Step0: 组合回撤保护
+    drawdown_halt = _check_drawdown(portfolio, logs)
+
+    # Step1: 止损/止盈自动平仓（含时间止损 + 分批止盈）
     for alert in check_stop_loss_take_profit(portfolio):
         ticker = alert["ticker"]
         if ticker not in portfolio["positions"]:
             continue
         pos = portfolio["positions"][ticker]
         reason = f"自动{alert['action']}（{alert['pnl_pct']:+.1f}%）"
-        ok, msg = sell(portfolio, ticker, pos["name"], alert["current_price"], pos["shares"], reason, today)
-        if ok:
-            logs.append(msg)
+
+        # 分批止盈：只卖出 partial_shares，并记录已执行的级别
+        if "partial_shares" in alert:
+            sell_shares = alert["partial_shares"]
+            ok, msg = sell(portfolio, ticker, pos["name"], alert["current_price"],
+                           sell_shares, reason, today)
+            if ok:
+                logs.append(msg)
+                # 记录已执行的止盈级别，避免重复触发
+                if ticker in portfolio["positions"]:
+                    tp_executed = portfolio["positions"][ticker].setdefault("tp_executed", [])
+                    tp_executed.append(alert["tp_level_index"])
+        else:
+            # 全仓止损/止盈/时间止损
+            ok, msg = sell(portfolio, ticker, pos["name"], alert["current_price"],
+                           pos["shares"], reason, today)
+            if ok:
+                logs.append(msg)
 
     # Step2: 持仓中信号转弱 → 分级卖出
     stock_map = {s["ticker"]: s for s in stocks}
@@ -137,13 +162,16 @@ def auto_trade(analysis_data: dict) -> list[str]:
                 if ok:
                     logs.append(msg)
 
-    # Step3: 按买入信号自动开仓（评分>=7）
-    buy_signals = [
-        s for s in stocks
-        if s.get("score", 0) >= 7
-        and s.get("action") not in ["基本面排除", "超买跳过"]
-        and s["ticker"] not in portfolio["positions"]
-    ]
+    # Step3: 按买入信号自动开仓（评分>=7）（回撤停买时跳过）
+    if drawdown_halt:
+        logs.append("☢️ 组合回撤超限，停止新开仓")
+    else:
+        buy_signals = [
+            s for s in stocks
+            if s.get("score", 0) >= 7
+            and s.get("action") not in ["基本面排除", "超买跳过"]
+            and s["ticker"] not in portfolio["positions"]
+        ]
 
     for s in buy_signals:
         can_buy, reason = check_position_limits(portfolio)
@@ -198,14 +226,29 @@ def auto_trade(analysis_data: dict) -> list[str]:
             logs.append(f"跳过 {name}：一手需¥{min_lot_cost_cny:,.0f}，超过可用额度¥{actual_cny:,.0f}")
             continue
 
-        shares = int((actual_cny / rate) / price / lot_size) * lot_size
-        if shares < lot_size:
-            shares = lot_size
+        total_shares = int((actual_cny / rate) / price / lot_size) * lot_size
+        if total_shares < lot_size:
+            total_shares = lot_size
 
-        ok, msg = buy(portfolio, ticker, name, price, shares,
-                      f"评分{s['score']:+d}，{s['signals'][0][:30] if s.get('signals') else ''}", today)
+        # 分批建仓：第一批即时买入，剩余批次记录待建仓计划
+        first_ratio = config.PARTIAL_BUILD_RATIOS[0]
+        first_shares = max(lot_size, int(total_shares * first_ratio / lot_size) * lot_size)
+
+        ok, msg = buy(portfolio, ticker, name, price, first_shares,
+                      f"评分{s['score']:+d}，分批建仓(1/{len(config.PARTIAL_BUILD_RATIOS)})  "
+                      f"{s['signals'][0][:25] if s.get('signals') else ''}", today)
         if ok:
             logs.append(msg)
+            # 记录待建仓计划
+            remaining_shares = total_shares - first_shares
+            if remaining_shares >= lot_size and ticker in portfolio["positions"]:
+                portfolio["positions"][ticker]["pending_build"] = {
+                    "total_target_shares": total_shares,
+                    "remaining_shares": remaining_shares,
+                    "lot_size": lot_size,
+                    "ratios": config.PARTIAL_BUILD_RATIOS[1:],
+                    "built_count": 1,
+                }
 
     # Step4: 记录净值快照
     _snapshot(portfolio, today)
@@ -280,6 +323,51 @@ def _check_correlation(ticker: str, portfolio: dict) -> bool:
                     return True
     except Exception:
         pass
+    return False
+
+
+def _check_drawdown(portfolio: dict, logs: list) -> bool:
+    """
+    组合级别回撤保护。
+    - 回撤 > DRAWDOWN_WARN_PCT: 警告
+    - 回撤 > DRAWDOWN_HALT_PCT: 停止新开仓
+    - 回撤 > DRAWDOWN_REDUCE_PCT: 强制减仓50%
+    返回 True 表示应停止新开仓。
+    """
+    snaps = portfolio.get("daily_snapshots", [])
+    if len(snaps) < 2:
+        return False
+
+    # 找历史最高净值
+    peak = max(s.get("total_value_cny", 0) for s in snaps)
+    current = snaps[-1].get("total_value_cny", portfolio["total_capital_cny"])
+    if peak <= 0:
+        return False
+
+    drawdown = (peak - current) / peak
+
+    if drawdown >= config.DRAWDOWN_REDUCE_PCT:
+        logs.append(f"🚨 组合回撤 {drawdown:.1%} 超过减仓线 {config.DRAWDOWN_REDUCE_PCT:.0%}，强制减仓50%")
+        today = datetime.now().strftime("%Y-%m-%d")
+        for ticker in list(portfolio["positions"].keys()):
+            pos = portfolio["positions"].get(ticker)
+            if not pos:
+                continue
+            sell_shares = pos["shares"] // 2
+            if sell_shares > 0:
+                prices = fetch_realtime([ticker])
+                price = prices.get(ticker, {}).get("price", pos["avg_cost_hkd"])
+                ok, msg = sell(portfolio, ticker, pos["name"], price, sell_shares,
+                               f"回撤{drawdown:.1%}强制减仓50%", today)
+                if ok:
+                    logs.append(msg)
+        return True
+    elif drawdown >= config.DRAWDOWN_HALT_PCT:
+        logs.append(f"⚠️ 组合回撤 {drawdown:.1%} 超过停买线 {config.DRAWDOWN_HALT_PCT:.0%}，停止新开仓")
+        return True
+    elif drawdown >= config.DRAWDOWN_WARN_PCT:
+        logs.append(f"⚠️ 组合回撤 {drawdown:.1%} 超过警告线 {config.DRAWDOWN_WARN_PCT:.0%}")
+
     return False
 
 

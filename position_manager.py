@@ -41,7 +41,7 @@ def calc_trade_fee_hkd(amount_hkd: float) -> float:
     """
     港股单边交易费用（港元）
     券商佣金 0.03% (min 3)  +  平台费 15/笔  +  SFC 0.00278%
-    HKEX 0.00565%  +  CCASS 0.002% (min 2)  +  印花税 0.13% (ceil to 1)
+    HKEX 0.00565%  +  CCASS 0.002% (min 2)  +  印花税 0.1% (ceil to 1) [2024年起]
     """
     return round(
         max(3.0, amount_hkd * 0.0003)
@@ -49,7 +49,7 @@ def calc_trade_fee_hkd(amount_hkd: float) -> float:
         + amount_hkd * 0.0000278
         + amount_hkd * 0.0000565
         + max(2.0, amount_hkd * 0.00002)
-        + max(1.0, math.ceil(amount_hkd * 0.0013)),
+        + max(1.0, math.ceil(amount_hkd * 0.001)),
         2,
     )
 
@@ -171,6 +171,40 @@ def check_stop_loss_take_profit(portfolio) -> list[dict]:
                 "avg_cost": avg_cost,
                 "hold_days": hold_days,
             })
+        # 时间止损：持仓超过 TIME_STOP_DAYS 天且涨幅不足
+        elif hold_days >= config.TIME_STOP_DAYS and pnl_pct < config.TIME_STOP_MIN_GAIN_PCT:
+            alerts.append({
+                "ticker": ticker,
+                "name": pos.get("name", ticker),
+                "action": "时间止损",
+                "pnl_pct": round(pnl_pct, 2),
+                "pnl_cny": round(pnl_cny, 2),
+                "current_price": current_price,
+                "avg_cost": avg_cost,
+                "hold_days": hold_days,
+            })
+        else:
+            # 分批止盈检查：按 PARTIAL_TP_LEVELS 分批卖出
+            tp_executed = pos.get("tp_executed", [])  # 已执行的止盈级别索引
+            for i, (tp_pct, tp_sell_ratio) in enumerate(config.PARTIAL_TP_LEVELS):
+                if i in tp_executed:
+                    continue
+                if pnl_pct >= tp_pct * 100:
+                    sell_shares = int(shares * tp_sell_ratio)
+                    if sell_shares > 0:
+                        alerts.append({
+                            "ticker": ticker,
+                            "name": pos.get("name", ticker),
+                            "action": f"分批止盈({i+1}/{len(config.PARTIAL_TP_LEVELS)})",
+                            "pnl_pct": round(pnl_pct, 2),
+                            "pnl_cny": round(pnl_cny, 2),
+                            "current_price": current_price,
+                            "avg_cost": avg_cost,
+                            "hold_days": hold_days,
+                            "partial_shares": sell_shares,
+                            "tp_level_index": i,
+                        })
+                    break  # 每次只触发一个级别
 
     save_portfolio(portfolio)
     return alerts

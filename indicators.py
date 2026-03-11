@@ -64,3 +64,57 @@ def calc_adx(high, low, close, period=14):
     dx = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di))
     adx = dx.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
     return adx, plus_di, minus_di
+
+
+def calc_atr(high, low, close, period=14):
+    """
+    计算 ATR（平均真实范围）- Wilder 平滑法
+    用于波动率自适应仓位管理和止损距离计算
+    """
+    tr = pd.concat([
+        high - low,
+        (high - close.shift()).abs(),
+        (low - close.shift()).abs()
+    ], axis=1).max(axis=1)
+    atr = tr.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
+    return atr
+
+
+def calc_momentum(close, benchmark_close=None, period=20):
+    """
+    计算动量因子（相对强度）
+    如果提供 benchmark_close（如恒生指数），则计算相对动量；
+    否则计算绝对动量（period日涨幅）。
+
+    返回: 动量百分比序列
+    """
+    if benchmark_close is not None:
+        # 相对动量 = 个股涨幅 - 基准涨幅
+        stock_ret = close.pct_change(period) * 100
+        bench_ret = benchmark_close.pct_change(period) * 100
+        return stock_ret - bench_ret
+    else:
+        # 绝对动量
+        return close.pct_change(period) * 100
+
+
+def resample_to_weekly(df):
+    """
+    将日线数据重采样为周线数据。
+    输入 DataFrame 需要包含: Open, High, Low, Close, Volume 列，
+    且 index 为 DatetimeIndex。
+
+    返回: 周线 DataFrame
+    """
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df = df.copy()
+        df.index = pd.to_datetime(df.index)
+
+    weekly = df.resample("W").agg({
+        "Open": "first",
+        "High": "max",
+        "Low": "min",
+        "Close": "last",
+        "Volume": "sum",
+    }).dropna()
+    return weekly

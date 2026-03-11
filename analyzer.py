@@ -7,7 +7,7 @@ import json
 import os
 import time
 from real_data import fetch_history, fetch_realtime
-from indicators import calc_rsi, calc_macd, calc_bollinger, calc_adx
+from indicators import calc_rsi, calc_macd, calc_bollinger, calc_adx, calc_atr, calc_momentum
 
 # 股票名称缓存（由动态筛选填充）
 NAME_CACHE = {}
@@ -137,14 +137,46 @@ def analyze_stock(ticker, config):
     elif latest.get("adx", 0) < 15 and latest.get("adx", 0) > 0:
         signals.append(f"ADX={latest['adx']}（趋势较弱，震荡市）")
 
-    # 成交量信号
+    # 成交量信号（增强权重 + 量价背离检测）
     if latest["volume_ratio"] > config.VOLUME_SPIKE:
         if latest["change_pct"] > 0:
-            score += 1
-            signals.append(f"放量上涨（成交量{latest['volume_ratio']}x，资金流入）")
+            score += 2
+            signals.append(f"放量上涨（成交量{latest['volume_ratio']}x，资金流入，权重增强）")
         else:
+            score -= 2
+            signals.append(f"放量下跌（成交量{latest['volume_ratio']}x，资金流出，权重增强）")
+
+    # 量价背离检测（价格创新高但成交量萎缩 or 价格创新低但成交量萎缩）
+    if len(df) >= 10:
+        recent_5 = close.iloc[-5:]
+        recent_vol_5 = volume.iloc[-5:]
+        prev_5 = close.iloc[-10:-5]
+        prev_vol_5 = volume.iloc[-10:-5]
+        price_up = recent_5.mean() > prev_5.mean()
+        vol_down = recent_vol_5.mean() < prev_vol_5.mean() * 0.7
+        if price_up and vol_down:
             score -= 1
-            signals.append(f"放量下跌（成交量{latest['volume_ratio']}x，资金流出）")
+            signals.append("量价背离（价格上涨但成交量萎缩，上涨动能不足）")
+        price_down = recent_5.mean() < prev_5.mean()
+        vol_down_2 = recent_vol_5.mean() < prev_vol_5.mean() * 0.7
+        if price_down and vol_down_2:
+            score += 1
+            signals.append("缩量下跌（抛压减弱，可能接近底部）")
+
+    # 动量因子
+    if len(df) >= config.MOMENTUM_PERIOD + 1:
+        momentum_val = calc_momentum(close, period=config.MOMENTUM_PERIOD)
+        latest_momentum = safe_float(momentum_val.iloc[-1], 0)
+        latest["momentum"] = round(latest_momentum, 2)
+        if latest_momentum > 10:
+            score += 2
+            signals.append(f"强劲动量+{latest_momentum:.1f}%（{config.MOMENTUM_PERIOD}日涨幅显著）")
+        elif latest_momentum > 5:
+            score += 1
+            signals.append(f"正向动量+{latest_momentum:.1f}%")
+        elif latest_momentum < -10:
+            score -= 1
+            signals.append(f"弱势动量{latest_momentum:.1f}%（{config.MOMENTUM_PERIOD}日跌幅大）")
 
     # 跌幅超大时区分技术性超跌和利空恐慌
     if latest["change_pct"] < -5:
@@ -176,6 +208,22 @@ def analyze_stock(ticker, config):
     latest["action"] = action
     latest["signals"] = signals
 
+    # ATR-based position sizing
+    atr_position_cny = None
+    if "High" in df.columns and "Low" in df.columns:
+        atr_series = calc_atr(df["High"], df["Low"], close, config.ATR_PERIOD)
+        latest_atr = safe_float(atr_series.iloc[-1], 0)
+        latest["atr"] = round(latest_atr, 4)
+        if latest_atr > 0 and latest["price"] > 0:
+            # 每笔风险 = 总资金 * ATR_RISK_PER_TRADE
+            risk_per_trade = config.TOTAL_CAPITAL * config.ATR_RISK_PER_TRADE
+            # 止损距离 = ATR * multiplier (HKD)
+            stop_distance_hkd = latest_atr * config.ATR_MULTIPLIER
+            # 可买股数 = risk / stop_distance / rate
+            rate = 0.885  # 粗略汇率用于初步估算，实际交易时用实时汇率
+            shares_by_risk = risk_per_trade / (stop_distance_hkd * rate)
+            atr_position_cny = shares_by_risk * latest["price"] * rate
+
     # 建议仓位（三档对应不同仓位）
     if score >= 6:
         suggested_position_pct = 0.15    # 强烈买入：15%
@@ -186,7 +234,12 @@ def analyze_stock(ticker, config):
     else:
         suggested_position_pct = 0
 
-    latest["suggested_position_cny"] = int(config.TOTAL_CAPITAL * suggested_position_pct)
+    pct_position_cny = int(config.TOTAL_CAPITAL * suggested_position_pct)
+    # 取 ATR 仓位和百分比仓位的较小值（风控优先）
+    if atr_position_cny is not None and pct_position_cny > 0:
+        latest["suggested_position_cny"] = min(pct_position_cny, int(atr_position_cny))
+    else:
+        latest["suggested_position_cny"] = pct_position_cny
     latest["name"] = NAME_CACHE.get(ticker, ticker)
 
     return latest
@@ -214,8 +267,10 @@ def run_analysis(config, use_dynamic=True):
     except Exception as e:
         print(f"[WARN] IPO 新股注入失败（不影响主流程）: {e}")
 
-    # ── 大盘趋势过滤（恒生指数） ──────────────────────────
+    # ── 大盘趋势过滤（恒生指数 + 市场数据模块） ──────────
     market_regime = "neutral"  # neutral / bullish / bearish
+    market_signals = None
+    position_multiplier = 1.0
     try:
         hsi_df = fetch_stock_data("HSI.HI", days=60)
         if hsi_df is not None and len(hsi_df) >= 30:
@@ -238,6 +293,22 @@ def run_analysis(config, use_dynamic=True):
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] ➡️ 大盘趋势：中性（恒指RSI={latest_rsi:.0f}）")
     except Exception as e:
         print(f"[WARN] 恒生指数趋势检测失败: {e}")
+
+    # 获取市场级数据（南向资金、AH溢价、VHSI等），用于仓位倍数调节
+    try:
+        from market_data import get_market_signals
+        market_signals = get_market_signals()
+        if market_signals.get("valid"):
+            position_multiplier = market_signals.get("position_multiplier", 1.0)
+            ms_sentiment = market_signals.get("overall_sentiment", "neutral")
+            ms_score = market_signals.get("score", 0)
+            sb_info = market_signals.get("southbound", {})
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] 市场信号: "
+                  f"情绪={ms_sentiment}(分数{ms_score:+d}) "
+                  f"仓位倍数={position_multiplier:.1f} "
+                  f"南向资金={sb_info.get('net_buy', '?')}亿")
+    except Exception as e:
+        print(f"[WARN] 市场数据获取失败（不影响主流程）: {e}")
 
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 开始分析 {len(watchlist)} 只股票...")
     results = []
@@ -265,22 +336,29 @@ def run_analysis(config, use_dynamic=True):
     except Exception as e:
         print(f"[WARN] 基本面增强失败（不影响主流程）: {e}")
 
-    # ── 板块热度加分 ──────────────────────────────
+    # ── 板块热度加分/减分 ──────────────────────────────
     output_sector_report = ""
     try:
-        from sector_analyzer import fetch_sector_performance, get_hot_sectors, sector_score_boost, get_sector_report
+        from sector_analyzer import fetch_sector_performance, get_hot_sectors, get_cold_sectors, sector_score_boost, get_sector_report
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 检测板块热度...")
         sector_perf = fetch_sector_performance()
         hot_sectors = get_hot_sectors(sector_perf)
+        cold_sectors = get_cold_sectors(sector_perf)
         if hot_sectors:
             print(f"  🔥 今日热门板块：{'、'.join(hot_sectors)}")
+        if cold_sectors:
+            print(f"  ❄️ 今日冷门板块：{'、'.join(cold_sectors)}")
         for r in results:
             if r.get("score", 0) == -99:
                 continue
-            boost = sector_score_boost(r["ticker"], hot_sectors, r.get("name", ""))
-            if boost > 0:
+            boost = sector_score_boost(r["ticker"], hot_sectors, r.get("name", ""),
+                                       sector_perf=sector_perf, cold_sectors=cold_sectors)
+            if boost != 0:
                 r["score"] = r.get("score", 0) + boost
-                r.setdefault("signals", []).append(f"板块热度加分+{boost}（所属板块为今日热门）")
+                if boost > 0:
+                    r.setdefault("signals", []).append(f"板块热度加分+{boost}（所属板块为今日热门）")
+                else:
+                    r.setdefault("signals", []).append(f"板块冷门减分{boost}（所属板块为今日弱势）")
         # 把板块报告附加到output
         output_sector_report = get_sector_report(sector_perf)
     except Exception as e:
@@ -328,15 +406,20 @@ def run_analysis(config, use_dynamic=True):
             r["action"] = "观望/减仓"
         else:
             r["action"] = "持有观望"
-        # 重新映射建议仓位
+        # 重新映射建议仓位（结合市场仓位倍数）
         if sc >= 6:
-            r["suggested_position_cny"] = int(config.TOTAL_CAPITAL * 0.15)
+            base_pos = int(config.TOTAL_CAPITAL * 0.15)
         elif sc >= 4:
-            r["suggested_position_cny"] = int(config.TOTAL_CAPITAL * 0.10)
+            base_pos = int(config.TOTAL_CAPITAL * 0.10)
         elif sc >= 3:
-            r["suggested_position_cny"] = int(config.TOTAL_CAPITAL * 0.05)
+            base_pos = int(config.TOTAL_CAPITAL * 0.05)
         else:
-            r["suggested_position_cny"] = 0
+            base_pos = 0
+        # 市场仓位倍数调节（bearish 时减仓，bullish 时可适度加仓）
+        adjusted_pos = int(base_pos * position_multiplier)
+        # 取 ATR 仓位和调节后仓位的较小值
+        atr_pos = r.get("suggested_position_cny", adjusted_pos)
+        r["suggested_position_cny"] = min(adjusted_pos, atr_pos) if atr_pos > 0 else adjusted_pos
 
     # 按评分排序
     results.sort(key=lambda x: x["score"], reverse=True)
@@ -360,6 +443,8 @@ def run_analysis(config, use_dynamic=True):
         },
         "sector_report": output_sector_report,
         "market_regime": market_regime,
+        "market_signals": market_signals if market_signals else {},
+        "position_multiplier": position_multiplier,
     }
 
     os.makedirs("data", exist_ok=True)

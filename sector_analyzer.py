@@ -199,6 +199,14 @@ def get_hot_sectors(sector_perf: dict, top_n: int = 3) -> list[str]:
     return [s[0] for s in sorted_sectors[:top_n] if s[1]["avg_chg"] > 0]
 
 
+def get_cold_sectors(sector_perf: dict, bottom_n: int = 3) -> list[str]:
+    """返回当日最弱的 bottom_n 个板块名称"""
+    if not sector_perf:
+        return []
+    sorted_sectors = sorted(sector_perf.items(), key=lambda x: x[1]["avg_chg"])
+    return [s[0] for s in sorted_sectors[:bottom_n] if s[1]["avg_chg"] < 0]
+
+
 def get_sector(ticker: str, name: str = "") -> str:
     """查询某只股票所属板块，支持自动识别"""
     # 1. 先查精确映射表
@@ -213,13 +221,36 @@ def get_sector(ticker: str, name: str = "") -> str:
     return "其他"
 
 
-def sector_score_boost(ticker: str, hot_sectors: list[str], name: str = "") -> int:
+def sector_score_boost(ticker: str, hot_sectors: list[str], name: str = "",
+                       sector_perf: dict = None, cold_sectors: list[str] = None) -> int:
     """
-    如果该股票属于热门板块，加 1 分
+    板块热度评分调整：
+    - 热门板块：+1 ~ +SECTOR_HEAT_BOOST_MAX（根据板块涨幅分级）
+    - 冷门板块：SECTOR_COLD_PENALTY_MAX ~ -1
     """
+    import config as cfg
     sector = get_sector(ticker, name)
+
     if sector in hot_sectors:
+        if sector_perf and sector in sector_perf:
+            avg_chg = sector_perf[sector]["avg_chg"]
+            if avg_chg >= 3.0:
+                return min(cfg.SECTOR_HEAT_BOOST_MAX, 3)
+            elif avg_chg >= 1.5:
+                return min(cfg.SECTOR_HEAT_BOOST_MAX, 2)
+            else:
+                return 1
         return 1
+
+    if cold_sectors and sector in cold_sectors:
+        if sector_perf and sector in sector_perf:
+            avg_chg = sector_perf[sector]["avg_chg"]
+            if avg_chg <= -3.0:
+                return max(cfg.SECTOR_COLD_PENALTY_MAX, -2)
+            elif avg_chg <= -1.5:
+                return max(cfg.SECTOR_COLD_PENALTY_MAX, -1)
+        return -1
+
     return 0
 
 

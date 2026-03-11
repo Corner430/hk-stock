@@ -14,6 +14,26 @@ from datetime import datetime, timedelta
 
 HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://gu.qq.com/"}
 
+# 行业 PE 中位数（用于相对估值评分）
+INDUSTRY_PE_MEDIAN = {
+    "科技互联网": 25,
+    "AI人工智能": 60,
+    "AI芯片半导体": 50,
+    "机器人": 45,
+    "新能源汽车": 30,
+    "金融银行": 8,
+    "消费零售": 20,
+    "能源资源": 10,
+    "医疗健康": 25,
+    "地产": 6,
+    "工业制造": 12,
+    "黄金贵金属": 15,
+    "公用事业": 12,
+    "通信": 15,
+    "交通运输": 12,
+}
+
+
 # ─── 第一期：基本面过滤 ────────────────────────────────────
 
 def fetch_fundamentals(tc_code: str) -> dict:
@@ -112,13 +132,22 @@ def fundamental_filter(ticker: str, tc_code: str, fund: dict, sector: str = None
     if div is not None and div > 3:
         reasons.append(f"股息率={div:.1f}% 高息股")
 
+    # 规则4: 自由流通比例过低（如果数据可用）
+    free_float = fund.get("free_float_pct")
+    if free_float is not None:
+        import config as cfg
+        if free_float < cfg.MIN_FREE_FLOAT_PCT:
+            reasons.append(f"自由流通={free_float:.1f}% 过低（<{cfg.MIN_FREE_FLOAT_PCT}%），流动性风险")
+            passed = False
+
     return passed, reasons
 
 
-def fundamental_score_adjust(fund: dict) -> int:
+def fundamental_score_adjust(fund: dict, sector: str = None) -> int:
     """
     根据基本面调整评分（-5 到 +5）
     增大基本面权重，让价值股有更大机会被选中
+    包含行业相对PE评分
     """
     adj = 0
     pe = fund.get("pe")
@@ -127,11 +156,25 @@ def fundamental_score_adjust(fund: dict) -> int:
     div = fund.get("dividend_yield")
 
     if pe is not None:
-        if 5 < pe < 15:    adj += 2   # 低估值（强加分）
-        elif 15 <= pe < 25: adj += 1   # 合理偏低
-        elif 25 <= pe < 40: adj += 0   # 合理
-        elif 40 < pe < 80: adj -= 1   # 偏高
-        elif pe > 80:       adj -= 2   # 很高
+        # 行业相对PE评分（优先）
+        if sector and sector in INDUSTRY_PE_MEDIAN and pe > 0:
+            industry_median = INDUSTRY_PE_MEDIAN[sector]
+            pe_ratio = pe / industry_median
+            if pe_ratio < 0.5:
+                adj += 2   # PE显著低于行业中位数
+            elif pe_ratio < 0.8:
+                adj += 1   # PE偏低
+            elif pe_ratio > 2.0:
+                adj -= 2   # PE显著高于行业
+            elif pe_ratio > 1.5:
+                adj -= 1   # PE偏高
+        else:
+            # 无行业数据时用绝对PE
+            if 5 < pe < 15:    adj += 2   # 低估值（强加分）
+            elif 15 <= pe < 25: adj += 1   # 合理偏低
+            elif 25 <= pe < 40: adj += 0   # 合理
+            elif 40 < pe < 80: adj -= 1   # 偏高
+            elif pe > 80:       adj -= 2   # 很高
 
     if roe is not None:
         if roe > 25:  adj += 2    # 极优秀
@@ -145,6 +188,28 @@ def fundamental_score_adjust(fund: dict) -> int:
     if div is not None:
         if div > 5:   adj += 2  # 超高息
         elif div > 3: adj += 1  # 高息
+
+    # PEG 评分（PE / 盈利增长率）
+    eps = fund.get("eps")
+    earnings_growth = fund.get("earnings_growth")
+    if pe is not None and pe > 0 and earnings_growth is not None and earnings_growth > 0:
+        peg = pe / earnings_growth
+        if peg < 0.5:
+            adj += 2   # PEG极低，成长被低估
+        elif peg < 1.0:
+            adj += 1   # PEG合理偏低
+        elif peg > 3.0:
+            adj -= 1   # PEG过高，成长不匹配估值
+
+    # FCF 评分（自由现金流）
+    fcf_yield = fund.get("fcf_yield")
+    if fcf_yield is not None:
+        if fcf_yield > 8:
+            adj += 2   # FCF yield 极佳
+        elif fcf_yield > 5:
+            adj += 1   # FCF yield 良好
+        elif fcf_yield < 0:
+            adj -= 1   # FCF为负，烧钱
 
     return max(-5, min(5, adj))
 
@@ -415,8 +480,8 @@ def enrich_with_fundamentals(stock: dict) -> dict:
         stock["signals"] = fund_reasons
         return stock
 
-    # 3. 基本面评分调整
-    adj = fundamental_score_adjust(fund)
+    # 3. 基本面评分调整（传入板块信息用于行业PE对比）
+    adj = fundamental_score_adjust(fund, sector=sector)
     stock["score"] = stock.get("score", 0) + adj
     stock["fundamental_notes"] = fund_reasons
 

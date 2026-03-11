@@ -377,8 +377,28 @@ async function loadAll(){
 async function triggerAnalysis(){
   const btn=event.target;btn.disabled=true;btn.textContent='分析中...';
   try{
-    await fetch('/api/refresh',{method:'POST'});
-    setTimeout(()=>{loadAll();btn.disabled=false;btn.textContent='立即分析';},8000);
+    const res=await fetch('/api/refresh',{method:'POST'});
+    const data=await res.json();
+    if(data.status==='already_running'){
+      btn.textContent='分析进行中...';
+    }
+    const startTime=Date.now();
+    const poll=setInterval(async()=>{
+      try{
+        const st=await fetch('/api/refresh/status').then(r=>r.json());
+        const elapsed=Math.round((Date.now()-startTime)/1000);
+        const mins=Math.floor(elapsed/60);
+        const secs=elapsed%60;
+        const timeStr=mins>0?`${mins}分${secs}秒`:`${secs}秒`;
+        btn.textContent=`分析中... ${timeStr}`;
+        if(st.status==='idle'){
+          clearInterval(poll);
+          btn.disabled=false;btn.textContent='立即分析';
+          loadAll();
+        }
+      }catch{}
+    },3000);
+    setTimeout(()=>{clearInterval(poll);btn.disabled=false;btn.textContent='立即分析';},900000);
   }catch{btn.disabled=false;btn.textContent='立即分析';}
 }
 

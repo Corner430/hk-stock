@@ -2,7 +2,7 @@
 Flask Web 看板服务（含净值曲线图表）
 """
 from flask import Flask, jsonify, request
-import json, os, subprocess, sys, threading
+import json, os, subprocess, sys, threading, time as _time
 
 app = Flask(__name__)
 
@@ -43,19 +43,52 @@ def api_portfolio():
         return jsonify(json.load(fp))
 
 _refresh_lock = threading.Lock()
+_refresh_status = {"status": "idle", "started_at": None, "finished_at": None}
 
 @app.route("/api/refresh", methods=["POST"])
 def api_refresh():
     if not _refresh_lock.acquire(blocking=False):
         return jsonify({"status": "already_running"}), 429
+    _refresh_status["status"] = "running"
+    _refresh_status["started_at"] = _time.time()
+    _refresh_status["finished_at"] = None
     def run():
         try:
             script = os.path.join(os.path.dirname(__file__), "daily_report.py")
             subprocess.run([sys.executable, script], cwd=os.path.dirname(__file__))
         finally:
+            _refresh_status["status"] = "idle"
+            _refresh_status["finished_at"] = _time.time()
             _refresh_lock.release()
     threading.Thread(target=run, daemon=True).start()
     return jsonify({"status": "started"})
+
+@app.route("/api/refresh/status")
+def api_refresh_status():
+    status = _refresh_status["status"]
+    started = _refresh_status["started_at"]
+    finished = _refresh_status["finished_at"]
+    result = {"status": status}
+    if started:
+        result["started_at"] = started
+        if status == "running":
+            result["elapsed_seconds"] = round(_time.time() - started, 1)
+    if finished:
+        result["finished_at"] = finished
+    latest = os.path.join(os.path.dirname(__file__), "data", "latest.json")
+    if os.path.exists(latest):
+        result["data_updated_at"] = os.path.getmtime(latest)
+    return jsonify(result)
+
+@app.route("/api/intraday-check", methods=["POST"])
+def api_intraday_check():
+    """盘中持仓检查（止损/止盈），供 OpenClaw cron 调用"""
+    try:
+        from auto_trader import run_intraday_check
+        logs = run_intraday_check()
+        return jsonify({"status": "ok", "logs": logs})
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
 
 # ── 数据库查询接口 ──
 @app.route("/api/db/runs")

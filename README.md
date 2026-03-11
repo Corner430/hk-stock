@@ -85,6 +85,51 @@ python3.11 hkstock_cron.py
 python3.11 dashboard.py
 ```
 
+### 部署 & 进程管理
+
+系统使用 **Supervisor** 管理后台服务，支持崩溃自动恢复和开机自启动。
+
+```bash
+# 安装 supervisor
+pip install supervisor
+```
+
+Supervisor 配置文件：
+
+| 文件 | 说明 |
+|------|------|
+| `/etc/supervisor/supervisord.conf` | Supervisor 主配置 |
+| `/etc/supervisor/conf.d/hkstock.conf` | 港股服务进程配置 |
+
+托管的进程：
+
+| 进程名 | 对应脚本 | 说明 |
+|--------|----------|------|
+| `hkstock-dashboard` | `dashboard.py` | Web 看板，监听 8888 端口 |
+| `hkstock-cron` | `hkstock_cron.py` | 定时调度守护进程 |
+
+关键特性：
+- `autorestart=true` — 进程崩溃后自动重启
+- `startretries=5` — 启动失败最多重试 5 次
+- 日志自动轮转，单文件最大 10MB，保留 3 份
+
+开机自启动（双重保障）：
+- `crontab @reboot` — 系统启动时自动拉起 supervisord
+- `.bashrc` — 登录 shell 时检测并补救
+
+#### 管理命令
+
+通过 `manage.sh` 或直接使用 `supervisorctl`：
+
+```bash
+./manage.sh status       # 查看服务状态
+./manage.sh start        # 启动所有服务
+./manage.sh stop         # 停止所有服务
+./manage.sh restart      # 重启所有服务
+./manage.sh log-dash     # 查看看板日志（最近 50 行）
+./manage.sh log-cron     # 查看定时任务日志（最近 50 行）
+```
+
 ## 模块说明
 
 | 模块 | 职责 |
@@ -160,7 +205,7 @@ hk-stock/
   database.py           # SQLite 存储
   real_data.py          # 数据接口
   backtest.py           # 回测
-  manage.sh             # 进程管理脚本
+  manage.sh             # 进程管理脚本（supervisorctl 封装）
   templates/
     index.html          # 看板前端
   data/                 # 运行时数据（git 忽略）

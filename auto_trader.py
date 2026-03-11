@@ -190,8 +190,17 @@ def auto_trade(analysis_data: dict) -> list[str]:
         # 获取真实每手股数并计算股数
         rt_info = fetch_realtime([ticker])
         lot_size = rt_info.get(ticker, {}).get("lot_size", 100)
-        shares_float = (actual_cny / get_hkd_to_cny()) / price
-        shares = max(lot_size, int(shares_float / lot_size) * lot_size)
+        rate = get_hkd_to_cny()
+        min_lot_cost_cny = price * lot_size * rate
+
+        # 一手都超过仓位上限或可用资金，跳过
+        if min_lot_cost_cny > actual_cny:
+            logs.append(f"跳过 {name}：一手需¥{min_lot_cost_cny:,.0f}，超过可用额度¥{actual_cny:,.0f}")
+            continue
+
+        shares = int((actual_cny / rate) / price / lot_size) * lot_size
+        if shares < lot_size:
+            shares = lot_size
 
         ok, msg = buy(portfolio, ticker, name, price, shares,
                       f"评分{s['score']:+d}，{s['signals'][0][:30] if s.get('signals') else ''}", today)

@@ -1,0 +1,100 @@
+"""
+Flask Web 看板服务（含净值曲线图表）
+"""
+from flask import Flask, jsonify, request
+import json, os, subprocess, sys
+
+app = Flask(__name__)
+
+TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
+
+@app.route("/")
+def index():
+    template_path = os.path.join(TEMPLATE_DIR, "index.html")
+    with open(template_path, "r", encoding="utf-8") as f:
+        return f.read()
+
+@app.route("/api/data")
+def api_data():
+    f = os.path.join(os.path.dirname(__file__), "data", "latest.json")
+    if not os.path.exists(f):
+        return jsonify({"error": "no data", "stocks": [], "summary": {}}), 200
+    with open(f, encoding="utf-8") as fp:
+        return jsonify(json.load(fp))
+
+@app.route("/api/portfolio")
+def api_portfolio():
+    f = os.path.join(os.path.dirname(__file__), "data", "portfolio.json")
+    if not os.path.exists(f):
+        return jsonify({"error": "no portfolio"}), 200
+    with open(f, encoding="utf-8") as fp:
+        return jsonify(json.load(fp))
+
+@app.route("/api/refresh", methods=["POST"])
+def api_refresh():
+    import threading
+    def run():
+        script = os.path.join(os.path.dirname(__file__), "daily_report.py")
+        subprocess.run([sys.executable, script], cwd=os.path.dirname(__file__))
+    threading.Thread(target=run, daemon=True).start()
+    return jsonify({"status": "started"})
+
+# ── 数据库查询接口 ──
+@app.route("/api/db/runs")
+def api_db_runs():
+    """所有回测记录"""
+    try:
+        from database import get_all_runs
+        return jsonify(get_all_runs())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/db/trades")
+def api_db_trades():
+    """交易记录，支持 ?run_id=xxx&ticker=xxx&limit=50"""
+    try:
+        from database import get_trade_history
+        run_id = request.args.get("run_id")
+        ticker = request.args.get("ticker")
+        limit = int(request.args.get("limit", 50))
+        return jsonify(get_trade_history(run_id, ticker, limit))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/db/snapshots")
+def api_db_snapshots():
+    """某次回测净值曲线，?run_id=xxx"""
+    try:
+        from database import get_snapshots
+        run_id = request.args.get("run_id", "v2_20260225_20260305")
+        return jsonify(get_snapshots(run_id))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/db/stock")
+def api_db_stock():
+    """某只股票历史评分，?ticker=2318.HK&days=30"""
+    try:
+        from database import get_stock_history
+        ticker = request.args.get("ticker", "0700.HK")
+        days = int(request.args.get("days", 30))
+        return jsonify(get_stock_history(ticker, days))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/db/stats")
+def api_db_stats():
+    """策略统计：胜率、平均盈亏"""
+    try:
+        from database import get_stats_summary
+        return jsonify(get_stats_summary())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# /api/db/query 已移除（存在SQL注入风险）
+# 如需查询，请使用预定义的 /api/db/trades, /api/db/stats 等接口
+
+if __name__ == "__main__":
+    print("🚀 启动港股分析看板...")
+    print("📊 访问 http://localhost:8888 查看看板")
+    app.run(host="0.0.0.0", port=8888, debug=False)

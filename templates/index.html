@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>港股智能分析看板</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:#0d1117;color:#e6edf3;min-height:100vh}
+.header{background:linear-gradient(135deg,#1a2332,#162032);border-bottom:1px solid #30363d;padding:20px 30px;display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:22px;font-weight:700;color:#58a6ff}
+.header .sub{font-size:13px;color:#8b949e;margin-top:4px}
+.update-time{font-size:12px;color:#8b949e}
+.btn{background:#21262d;border:1px solid #30363d;color:#e6edf3;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;transition:all .2s}
+.btn:hover{background:#30363d}
+.btn.primary{background:#1f6feb;border-color:#1f6feb;color:#fff}
+.btn.primary:hover{background:#388bfd}
+.tab-bar{display:flex;gap:0;padding:0 30px;background:#161b22;border-bottom:1px solid #30363d}
+.tab{padding:12px 20px;font-size:14px;cursor:pointer;color:#8b949e;border-bottom:2px solid transparent;transition:all .2s}
+.tab.active{color:#58a6ff;border-bottom-color:#58a6ff}
+.tab:hover{color:#e6edf3}
+.page{display:none;padding:24px 30px}
+.page.active{display:block}
+
+/* 摘要卡片 */
+.summary-bar{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap}
+.s-card{flex:1;min-width:130px;background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px;text-align:center}
+.s-card .num{font-size:26px;font-weight:700}
+.s-card .lbl{font-size:12px;color:#8b949e;margin-top:4px}
+.num.blue{color:#58a6ff}.num.green{color:#3fb950}.num.yellow{color:#d29922}.num.red{color:#f85149}
+
+/* 净值曲线区 */
+.chart-card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:20px;margin-bottom:24px}
+.chart-title{font-size:15px;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.chart-title::before{content:'';display:inline-block;width:4px;height:15px;background:#58a6ff;border-radius:2px}
+.chart-wrap{position:relative;height:220px}
+
+/* 持仓表格 */
+.pos-table{width:100%;border-collapse:collapse;font-size:13px}
+.pos-table th{text-align:left;padding:8px 12px;color:#8b949e;font-weight:500;border-bottom:1px solid #30363d}
+.pos-table td{padding:10px 12px;border-bottom:1px solid #21262d}
+.pos-table tr:hover td{background:#161b22}
+.up{color:#3fb950}.down{color:#f85149}
+
+/* 股票卡片 */
+.section-title{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.section-title::before{content:'';display:inline-block;width:4px;height:15px;background:#58a6ff;border-radius:2px}
+.stock-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-bottom:28px}
+.stock-card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px;transition:border-color .2s}
+.stock-card:hover{border-color:#58a6ff}
+.stock-card.buy-card{border-left:3px solid #3fb950}
+.stock-card.sell-card{border-left:3px solid #f85149}
+.stock-card.hold-card{border-left:3px solid #d29922}
+.card-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.stock-name{font-size:15px;font-weight:600}
+.stock-ticker{font-size:12px;color:#8b949e;margin-top:2px}
+.badge{font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px}
+.badge-buy{background:rgba(63,185,80,.15);color:#3fb950}
+.badge-sell{background:rgba(248,81,73,.15);color:#f85149}
+.badge-hold{background:rgba(210,153,34,.15);color:#d29922}
+.price-row{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+.price{font-size:22px;font-weight:700}
+.chg{font-size:14px;font-weight:600}
+.indicators{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px}
+.ind{background:#21262d;border-radius:6px;padding:7px;text-align:center}
+.ind .v{font-size:14px;font-weight:600}
+.ind .l{font-size:11px;color:#8b949e;margin-top:2px}
+.signals{list-style:none;margin-top:8px}
+.signals li{font-size:12px;color:#8b949e;padding:2px 0 2px 14px;position:relative}
+.signals li::before{content:'▸';position:absolute;left:0;color:#58a6ff}
+.score-bar{display:flex;align-items:center;gap:8px;margin-top:10px}
+.score-lbl{font-size:12px;color:#8b949e;white-space:nowrap}
+.score-track{flex:1;height:5px;background:#30363d;border-radius:3px;overflow:hidden}
+.score-fill{height:100%;border-radius:3px}
+.score-val{font-size:13px;font-weight:600;white-space:nowrap;min-width:28px;text-align:right}
+.pos-hint{margin-top:8px;font-size:12px;color:#8b949e;background:#21262d;padding:7px 10px;border-radius:6px}
+.pos-hint span{color:#58a6ff;font-weight:600}
+.loading{text-align:center;padding:60px;color:#8b949e;font-size:16px}
+footer{text-align:center;padding:20px;font-size:12px;color:#8b949e;border-top:1px solid #30363d;margin-top:20px}
+.tag-real{background:rgba(63,185,80,.15);color:#3fb950;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:8px}
+.tag-mock{background:rgba(210,153,34,.15);color:#d29922;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:8px}
+@media(max-width:768px){.page{padding:16px}.summary-bar{flex-wrap:wrap}.stock-grid{grid-template-columns:1fr}.header{padding:16px}.tab-bar{padding:0 8px}}
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>港股智能分析看板</h1>
+    <div class="sub">基于技术指标的每日操作建议 <span id="dataTag" class="tag-mock">Mock数据</span></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <div class="update-time" id="updateTime">--</div>
+    <button class="btn" onclick="loadAll()">刷新</button>
+    <button class="btn primary" onclick="triggerAnalysis()">立即分析</button>
+  </div>
+</div>
+
+<div class="tab-bar">
+  <div class="tab active" onclick="switchTab('portfolio')">投资组合</div>
+  <div class="tab" onclick="switchTab('signals')">信号看板</div>
+  <div class="tab" onclick="switchTab('trades')">交易记录</div>
+</div>
+
+<!-- 投资组合页 -->
+<div class="page active" id="page-portfolio">
+  <div class="summary-bar">
+    <div class="s-card"><div class="num blue" id="totalVal">--</div><div class="lbl">总资产（¥）</div></div>
+    <div class="s-card"><div class="num" id="pnlVal" style="color:#8b949e">--</div><div class="lbl">总盈亏（¥）</div></div>
+    <div class="s-card"><div class="num" id="pnlPct" style="color:#8b949e">--</div><div class="lbl">收益率</div></div>
+    <div class="s-card"><div class="num yellow" id="cashVal">--</div><div class="lbl">剩余现金（¥）</div></div>
+    <div class="s-card"><div class="num blue" id="posCount">--</div><div class="lbl">持仓股票数</div></div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-title">净值曲线</div>
+    <div class="chart-wrap"><canvas id="navChart"></canvas></div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-title">当前持仓明细</div>
+    <table class="pos-table">
+      <thead><tr><th>股票</th><th>代码</th><th>持仓</th><th>均价(HKD)</th><th>现价(HKD)</th><th>盈亏%</th></tr></thead>
+      <tbody id="posTable"><tr><td colspan="6" style="text-align:center;color:#8b949e;padding:20px">暂无持仓</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 信号看板页 -->
+<div class="page" id="page-signals">
+  <div class="summary-bar">
+    <div class="s-card"><div class="num blue" id="sigTotal">--</div><div class="lbl">分析股票数</div></div>
+    <div class="s-card"><div class="num green" id="sigBuy">--</div><div class="lbl">买入信号</div></div>
+    <div class="s-card"><div class="num yellow" id="sigHold">--</div><div class="lbl">观望</div></div>
+    <div class="s-card"><div class="num red" id="sigSell">--</div><div class="lbl">卖出信号</div></div>
+  </div>
+  <div id="buySection" style="display:none">
+    <div class="section-title">买入机会</div>
+    <div class="stock-grid" id="buyGrid"></div>
+  </div>
+  <div id="holdSection" style="display:none">
+    <div class="section-title">持有观望</div>
+    <div class="stock-grid" id="holdGrid"></div>
+  </div>
+  <div id="sellSection" style="display:none">
+    <div class="section-title">注意减仓</div>
+    <div class="stock-grid" id="sellGrid"></div>
+  </div>
+  <div id="sigLoading" class="loading">加载中...</div>
+</div>
+
+<!-- 交易记录页 -->
+<div class="page" id="page-trades">
+  <div class="chart-card">
+    <div class="chart-title">每日盈亏柱状图</div>
+    <div class="chart-wrap"><canvas id="pnlChart"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">全部交易记录</div>
+    <table class="pos-table">
+      <thead><tr><th>日期</th><th>操作</th><th>股票</th><th>数量</th><th>价格(HKD)</th><th>金额(¥)</th><th>盈亏(¥)</th><th>原因</th></tr></thead>
+      <tbody id="tradeTable"><tr><td colspan="8" style="text-align:center;color:#8b949e;padding:20px">暂无记录</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<footer>本看板仅供参考，不构成投资建议。股市有风险，投资需谨慎。</footer>
+
+<script>
+let navChartInst = null;
+let pnlChartInst = null;
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i)=>{
+    const names=['portfolio','signals','trades'];
+    t.classList.toggle('active', names[i]===name);
+  });
+  document.querySelectorAll('.page').forEach(p=>{
+    p.classList.toggle('active', p.id==='page-'+name);
+  });
+}
+
+function getRsiColor(rsi){
+  if(rsi<35)return'#3fb950';if(rsi>70)return'#f85149';return'#58a6ff';
+}
+function getScoreColor(s){
+  if(s>=4)return'#3fb950';if(s>=2)return'#58a6ff';if(s>=0)return'#d29922';return'#f85149';
+}
+
+function renderCard(s){
+  const isUp=s.change_pct>=0;
+  const chgCls=isUp?'up':'down';
+  const chgSign=isUp?'+':'';
+  let badgeCls='badge-hold',cardCls='hold-card';
+  if(s.action.includes('买入')){badgeCls='badge-buy';cardCls='buy-card';}
+  if(s.action.includes('卖出')){badgeCls='badge-sell';cardCls='sell-card';}
+  const rsiColor=getRsiColor(s.rsi);
+  const scColor=getScoreColor(s.score);
+  const scPct=Math.max(0,Math.min(100,(s.score+10)*5));
+  const sigs=(s.signals||[]).slice(0,3).map(sg=>`<li>${sg}</li>`).join('');
+  const posHint=s.suggested_position_cny>0
+    ?`<div class="pos-hint">建议仓位：<span>¥${s.suggested_position_cny.toLocaleString()}</span></div>`:'';
+  return`<div class="stock-card ${cardCls}">
+    <div class="card-header">
+      <div><div class="stock-name">${s.name||s.ticker}</div><div class="stock-ticker">${s.ticker} · ${s.date}</div></div>
+      <span class="badge ${badgeCls}">${s.action}</span>
+    </div>
+    <div class="price-row">
+      <span class="price">${s.price}</span>
+      <span class="chg ${chgCls}">${chgSign}${s.change_pct}%</span>
+    </div>
+    <div class="indicators">
+      <div class="ind"><div class="v" style="color:${rsiColor}">${s.rsi}</div><div class="l">RSI</div></div>
+      <div class="ind"><div class="v">${s.volume_ratio}x</div><div class="l">成交量</div></div>
+      <div class="ind"><div class="v" style="color:${s.macd>s.macd_signal?'#3fb950':'#f85149'}">${s.macd>0?'多头':'空头'}</div><div class="l">MACD</div></div>
+    </div>
+    <ul class="signals">${sigs}</ul>
+    ${s.ai_analysis?`<div class="pos-hint" style="border-left:3px solid #58a6ff;margin-top:8px"><span style="color:#58a6ff">🤖 AI集成</span> ${s.ai_analysis.action||''}（${s.ai_analysis.score||'?'}/10）${s.ai_analysis.models_used?` <span style="color:#8b949e">${s.ai_analysis.models_used}模型`:''} ${s.ai_analysis.consensus!=null?`一致性${Math.round(s.ai_analysis.consensus*100)}%</span>`:''} ${s.ai_analysis.model_details?`<br><span style="color:#8b949e;font-size:11px">${s.ai_analysis.model_details.map(d=>d.model+':'+d.score+'/10').join(' | ')}</span>`:''} ${s.ai_analysis.risk?`<br><span style="color:#d29922">${s.ai_analysis.risk.slice(0,50)}</span>`:''}</div>`:''}
+    <div class="score-bar">
+      <span class="score-lbl">评分</span>
+      <div class="score-track"><div class="score-fill" style="width:${scPct}%;background:${scColor}"></div></div>
+      <span class="score-val" style="color:${scColor}">${s.score>0?'+':''}${s.score}</span>
+    </div>${posHint}</div>`;
+}
+
+function drawNavChart(snapshots){
+  const labels=snapshots.map(s=>s.date.slice(5));
+  const vals=snapshots.map(s=>s.total_value_cny);
+  const pcts=snapshots.map(s=>s.return_pct||s.total_return_pct||0);
+  const colors=pcts.map(p=>p>=0?'rgba(63,185,80,0.8)':'rgba(248,81,73,0.8)');
+  const ctx=document.getElementById('navChart').getContext('2d');
+  if(navChartInst)navChartInst.destroy();
+  navChartInst=new Chart(ctx,{
+    type:'line',
+    data:{
+      labels,
+      datasets:[{
+        label:'总资产（¥）',
+        data:vals,
+        borderColor:'#58a6ff',
+        backgroundColor:'rgba(88,166,255,0.08)',
+        borderWidth:2,
+        pointBackgroundColor:colors,
+        pointRadius:5,
+        fill:true,
+        tension:0.3,
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`¥${ctx.parsed.y.toLocaleString()}`}}},
+      scales:{
+        x:{grid:{color:'#21262d'},ticks:{color:'#8b949e'}},
+        y:{grid:{color:'#21262d'},ticks:{color:'#8b949e',callback:v=>'¥'+v.toLocaleString()}}
+      }
+    }
+  });
+}
+
+function drawPnlChart(snapshots){
+  const labels=snapshots.map(s=>s.date.slice(5));
+  const pnls=snapshots.map((s,i)=>{
+    const ret=s.total_return_cny||(s.total_value_cny-100000)||0;
+    if(i===0) return ret;
+    const prevRet=snapshots[i-1].total_return_cny||(snapshots[i-1].total_value_cny-100000)||0;
+    return ret - prevRet;
+  });
+  const colors=pnls.map(p=>p>=0?'rgba(63,185,80,0.7)':'rgba(248,81,73,0.7)');
+  const ctx=document.getElementById('pnlChart').getContext('2d');
+  if(pnlChartInst)pnlChartInst.destroy();
+  pnlChartInst=new Chart(ctx,{
+    type:'bar',
+    data:{labels,datasets:[{label:'当日盈亏（¥）',data:pnls,backgroundColor:colors,borderRadius:4}]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{color:'#21262d'},ticks:{color:'#8b949e'}},
+        y:{grid:{color:'#21262d'},ticks:{color:'#8b949e',callback:v=>(v>=0?'+':'')+v.toLocaleString()}}
+      }
+    }
+  });
+}
+
+async function loadAll(){
+  try{
+    const[d,p]=await Promise.all([fetch('/api/data').then(r=>r.json()),fetch('/api/portfolio').then(r=>r.json())]);
+    // 更新时间 & 数据标签
+    document.getElementById('updateTime').textContent='更新于 '+(d.generated_at||'--');
+    const isReal=d.is_real_data;
+    const tag=document.getElementById('dataTag');
+    tag.textContent=isReal?'真实数据':'Mock数据';
+    tag.className=isReal?'tag-real':'tag-mock';
+
+    // ── 信号看板 ──
+    const stocks=d.stocks||[];
+    document.getElementById('sigLoading').style.display='none';
+    document.getElementById('sigTotal').textContent=d.summary?.total_analyzed||stocks.length;
+    document.getElementById('sigBuy').textContent=d.summary?.buy_signals||0;
+    document.getElementById('sigHold').textContent=d.summary?.hold_signals||0;
+    document.getElementById('sigSell').textContent=d.summary?.sell_signals||0;
+    const buys=stocks.filter(s=>s.action.includes('买入'));
+    const holds=stocks.filter(s=>s.action.includes('观望')||s.action.includes('持有'));
+    const sells=stocks.filter(s=>s.action.includes('卖出'));
+    const show=(id,gridId,arr)=>{
+      document.getElementById(id).style.display=arr.length?'block':'none';
+      document.getElementById(gridId).innerHTML=arr.map(renderCard).join('');
+    };
+    show('buySection','buyGrid',buys);
+    show('holdSection','holdGrid',holds);
+    show('sellSection','sellGrid',sells);
+
+    // ── 投资组合 ──
+    if(p && !p.error){
+      const snap=p.daily_snapshots||[];
+      const last=snap[snap.length-1]||{};
+      const pnl=last.total_return_cny||0;
+      const pct=last.total_return_pct||0;
+      document.getElementById('totalVal').textContent='¥'+(last.total_value_cny||100000).toLocaleString();
+      const pnlEl=document.getElementById('pnlVal');
+      pnlEl.textContent=(pnl>=0?'+':'')+Math.round(pnl).toLocaleString();
+      pnlEl.style.color=pnl>=0?'#3fb950':'#f85149';
+      const pctEl=document.getElementById('pnlPct');
+      pctEl.textContent=(pct>=0?'+':'')+pct.toFixed(2)+'%';
+      pctEl.style.color=pct>=0?'#3fb950':'#f85149';
+      document.getElementById('cashVal').textContent='¥'+(last.cash_cny||p.cash_cny||0).toLocaleString();
+      document.getElementById('posCount').textContent=Object.keys(p.positions||{}).length;
+
+      if(snap.length>0){
+        drawNavChart(snap);
+        drawPnlChart(snap);
+      }
+
+      // 持仓表格
+      const pos=p.positions||{};
+      const realtime=d.realtime||{};
+      const rows=Object.entries(pos).map(([tk,ps])=>{
+        const cp=realtime[tk]?.price||ps.avg_cost_hkd;
+        const pp=((cp/ps.avg_cost_hkd-1)*100).toFixed(2);
+        const cls=pp>=0?'up':'down';
+        return`<tr>
+          <td>${ps.name}</td><td style="color:#8b949e">${tk}</td>
+          <td>${ps.shares.toLocaleString()}</td>
+          <td>${ps.avg_cost_hkd}</td><td>${cp}</td>
+          <td class="${cls}">${pp>=0?'+':''}${pp}%</td>
+        </tr>`;
+      });
+      document.getElementById('posTable').innerHTML=rows.length?rows.join(''):'<tr><td colspan="6" style="text-align:center;color:#8b949e;padding:20px">暂无持仓</td></tr>';
+
+      // 交易记录
+      const trades=(p.trades||[]).slice().reverse();
+      const trows=trades.map(t=>{
+        const isBuy=t.action==='BUY';
+        const pnlTd=isBuy?'<td style="color:#8b949e">-</td>':`<td class="${(t.pnl_cny||0)>=0?'up':'down'}">${(t.pnl_cny>=0?'+':'')+Math.round(t.pnl_cny).toLocaleString()}</td>`;
+        const amt=isBuy?`-¥${Math.round(t.cost_cny).toLocaleString()}`:`+¥${Math.round(t.revenue_cny).toLocaleString()}`;
+        const amtCls=isBuy?'down':'up';
+        return`<tr>
+          <td style="color:#8b949e">${t.date}</td>
+          <td><span class="badge ${isBuy?'badge-buy':'badge-sell'}">${isBuy?'买入':'卖出'}</span></td>
+          <td>${t.name}</td><td>${t.shares}</td><td>${t.price_hkd}</td>
+          <td class="${amtCls}">${amt}</td>${pnlTd}
+          <td style="color:#8b949e;font-size:12px">${t.reason||''}</td>
+        </tr>`;
+      });
+      document.getElementById('tradeTable').innerHTML=trows.length?trows.join(''):'<tr><td colspan="8" style="text-align:center;color:#8b949e;padding:20px">暂无记录</td></tr>';
+    }
+  }catch(e){
+    console.error('加载失败',e);
+  }
+}
+
+async function triggerAnalysis(){
+  const btn=event.target;btn.disabled=true;btn.textContent='分析中...';
+  try{
+    await fetch('/api/refresh',{method:'POST'});
+    setTimeout(()=>{loadAll();btn.disabled=false;btn.textContent='立即分析';},8000);
+  }catch{btn.disabled=false;btn.textContent='立即分析';}
+}
+
+loadAll();
+setInterval(loadAll,300000);
+</script>
+</body>
+</html>

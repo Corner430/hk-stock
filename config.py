@@ -12,8 +12,8 @@ SERVER_IP = os.environ.get("SERVER_IP", "127.0.0.1")
 
 # 仓位设置（人民币）
 TOTAL_CAPITAL = 100000       # 总资金
-MAX_POSITION = 15000         # 单只股票最大仓位
-RESERVE_CASH = 20000         # 保留现金（不投资）
+MAX_POSITION = 15000         # 单只股票最大仓位（Phase C: 10000→15000，提高资金利用率）
+RESERVE_CASH = 15000         # 保留现金（Phase C: 30000→15000，释放闲置资金）
 
 # 技术指标参数
 RSI_PERIOD = 14
@@ -24,8 +24,8 @@ MA_LONG = 30                 # 长期均线
 VOLUME_SPIKE = 1.5           # 成交量放大倍数阈值
 
 # 风险控制
-STOP_LOSS_PCT = 0.08         # 止损线：亏损 8% 触发
-TAKE_PROFIT_PCT = 0.35       # 全仓止盈线：应高于分批止盈最高级别(30%)
+STOP_LOSS_PCT = 0.08         # 止损线：亏损 8% 触发（Phase C: 6%→8%，适应港股波动率）
+TAKE_PROFIT_PCT = 0.25       # 全仓止盈线：应高于分批止盈最高级别(25%)（Phase B: 35%→25%）
 
 # 仓位管理
 MAX_POSITIONS = 10           # 最多持有10只股票
@@ -33,11 +33,11 @@ MAX_INVESTED_CNY = 100000    # 总投入上限 = 总资金（不限制）
 
 # ── 风险管理参数 ──
 DRAWDOWN_WARN_PCT = 0.05     # 组合回撤警告线 5%
-DRAWDOWN_HALT_PCT = 0.10     # 组合回撤停买线 10%（停止新开仓）
-DRAWDOWN_REDUCE_PCT = 0.15   # 组合回撤减仓线 15%（强制减仓50%）
+DRAWDOWN_HALT_PCT = 0.08     # 组合回撤停买线 8%（Phase B: 10%→8%）
+DRAWDOWN_REDUCE_PCT = 0.12   # 组合回撤减仓线 12%（Phase B: 15%→12%）
 
 # 时间止损
-TIME_STOP_DAYS = 20           # 持仓超过N个交易日且无显著涨幅则止损
+TIME_STOP_DAYS = 25           # 持仓超过N个交易日且无显著涨幅则止损（Phase C: 15→25，持仓>15d胜率85%）
 TIME_STOP_MIN_GAIN_PCT = 2.0  # 时间止损豁免条件：涨幅超过此值不触发
 
 # ATR 仓位管理
@@ -46,13 +46,13 @@ ATR_RISK_PER_TRADE = 0.02     # 每笔交易风险占总资金比例（2%）
 ATR_MULTIPLIER = 2.0          # 止损距离 = ATR * multiplier
 
 # 分批建仓
-PARTIAL_BUILD_RATIOS = [0.3, 0.3, 0.4]  # 三次建仓比例
+PARTIAL_BUILD_RATIOS = [0.5, 0.3, 0.2]  # 三次建仓比例（Phase C: 首批加大至50%）
 
 # 分批止盈
 PARTIAL_TP_LEVELS = [
-    (0.10, 0.333),  # 盈利10%时卖出1/3
-    (0.20, 0.333),  # 盈利20%时再卖1/3
-    (0.30, 1.0),    # 盈利30%时清仓
+    (0.10, 0.333),  # 盈利10%时卖出1/3（Phase C: 8%→10%，给赢家更多空间）
+    (0.18, 0.333),  # 盈利18%时再卖1/3（Phase C: 15%→18%）
+    (0.25, 1.0),    # 盈利25%时清仓
 ]
 
 # RSI 短周期（保留 RSI_PERIOD=14 兼容，新增短周期辅助信号）

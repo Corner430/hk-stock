@@ -56,6 +56,7 @@ def fetch_southbound_flow() -> dict:
         # 解析南向净买入（沪港通南+深港通南，单位：万元 → 亿港元）
         # data.data.s2n 格式: 南向净买入
         s2n = data.get("data", {})
+        # NOTE: f2/f4 单位为万元（人民币），转换为亿元需除以10000
         net_buy_hgt = float(s2n.get("f2", 0))  # 沪→港 净买入（万元）
         net_buy_sgt = float(s2n.get("f4", 0))  # 深→港 净买入（万元）
         net_buy_total = (net_buy_hgt + net_buy_sgt) / 10000  # 万→亿
@@ -101,7 +102,8 @@ def fetch_ah_premium() -> dict:
         resp.raise_for_status()
         data = resp.json()
 
-        index_val = float(data.get("data", {}).get("f43", 0)) / 100  # 通常两位小数
+        # NOTE: f43 返回值已验证为实际值*100，需除以100还原。如数值异常请检查API变更
+        index_val = float(data.get("data", {}).get("f43", 0)) / 100
 
         # AH溢价 > 130 → A股明显偏贵，南向资金更有动力买H股
         if index_val > 135:
@@ -145,6 +147,7 @@ def fetch_vhsi() -> dict:
         resp.raise_for_status()
         data = resp.json()
 
+        # NOTE: f43 返回值已验证为实际值*100，需除以100还原。如数值异常请检查API变更
         vhsi_val = float(data.get("data", {}).get("f43", 0)) / 100
 
         if vhsi_val > 30:
@@ -164,20 +167,21 @@ def fetch_vhsi() -> dict:
 
 
 # ────────────────────────────────────────────
-# 4. 卖空比率
+# 4. 市场活跃度（HSI换手率）
 # ────────────────────────────────────────────
-def fetch_short_selling_ratio() -> dict:
+def fetch_market_activity() -> dict:
     """
-    获取港股市场整体卖空比率。
-    高卖空 → 市场悲观 or 对冲需求大。
-    返回: {"valid": True, "ratio": float(%), "signal": "high"|"normal"|"low"}
+    获取恒生指数换手率，作为市场交易活跃度的衡量指标。
+    高换手率 → 市场交易活跃（可能是情绪波动或资金进出频繁）。
+    低换手率 → 市场交投清淡。
+    注意：此指标为HSI换手率，并非卖空比率。
+    返回: {"valid": True, "turnover_rate": float(%), "signal": "high"|"normal"|"low"}
     """
-    cached = _get_cached("short_ratio")
+    cached = _get_cached("market_activity")
     if cached:
         return cached
 
     try:
-        # 港交所卖空统计需要爬取，这里用东方财富近似
         url = "https://push2.eastmoney.com/api/qt/stock/get"
         params = {
             "secid": "100.HSI",
@@ -188,23 +192,23 @@ def fetch_short_selling_ratio() -> dict:
         resp.raise_for_status()
         data = resp.json()
 
-        # 用换手率作为卖空活跃度的近似指标
+        # HSI 换手率（f50），反映市场整体交易活跃程度
         turnover_rate = float(data.get("data", {}).get("f50", 0)) / 100
 
         if turnover_rate > 18:
-            signal = "high"
+            signal = "high"    # 交投非常活跃
         elif turnover_rate < 8:
-            signal = "low"
+            signal = "low"     # 交投清淡
         else:
             signal = "normal"
 
-        result = {"valid": True, "ratio": round(turnover_rate, 2), "signal": signal}
-        _set_cache("short_ratio", result)
+        result = {"valid": True, "turnover_rate": round(turnover_rate, 2), "signal": signal}
+        _set_cache("market_activity", result)
         return result
 
     except Exception as e:
-        logger.warning("获取卖空比率失败: %s", e)
-        return {"valid": False, "ratio": 0, "signal": "normal"}
+        logger.warning("获取市场活跃度数据失败: %s", e)
+        return {"valid": False, "turnover_rate": 0, "signal": "normal"}
 
 
 # ────────────────────────────────────────────
@@ -333,7 +337,7 @@ def get_market_signals() -> dict:
             "southbound": {...},
             "ah_premium": {...},
             "vhsi": {...},
-            "short_ratio": {...},
+            "market_activity": {...},
             "us_overnight": {...},
             "msci": {...},
             "overall_sentiment": "bullish"|"bearish"|"neutral",
@@ -343,7 +347,7 @@ def get_market_signals() -> dict:
     sb = fetch_southbound_flow()
     ah = fetch_ah_premium()
     vhsi = fetch_vhsi()
-    sr = fetch_short_selling_ratio()
+    sr = fetch_market_activity()
     us = fetch_us_overnight()
     msci = check_msci_rebalance()
 
@@ -368,11 +372,12 @@ def get_market_signals() -> dict:
     elif vhsi.get("signal") == "high_vol":
         score -= 1
 
-    # 卖空比率（±1）
+    # 市场活跃度（±1）— 基于HSI换手率
+    # 高活跃度可能意味着市场波动加大，略微谨慎；低活跃度交投清淡，观望
     if sr.get("signal") == "high":
-        score -= 1
+        score -= 1   # 异常活跃可能伴随波动风险
     elif sr.get("signal") == "low":
-        score += 1
+        score += 1   # 低活跃度时筛选出的信号更可靠
 
     # 美股隔夜（±2）
     if us.get("signal") == "bullish":
@@ -409,7 +414,7 @@ def get_market_signals() -> dict:
         "southbound": sb,
         "ah_premium": ah,
         "vhsi": vhsi,
-        "short_ratio": sr,
+        "market_activity": sr,
         "us_overnight": us,
         "msci": msci,
         "score": score,

@@ -25,7 +25,7 @@ VOLUME_SPIKE = 1.5           # 成交量放大倍数阈值
 
 # 风险控制
 STOP_LOSS_PCT = 0.08         # 止损线：亏损 8% 触发
-TAKE_PROFIT_PCT = 0.15       # 止盈线：盈利 15% 触发
+TAKE_PROFIT_PCT = 0.35       # 全仓止盈线：应高于分批止盈最高级别(30%)
 
 # 仓位管理
 MAX_POSITIONS = 10           # 最多持有10只股票

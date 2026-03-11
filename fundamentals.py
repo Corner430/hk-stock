@@ -60,18 +60,32 @@ def fetch_fundamentals(tc_code: str) -> dict:
             except (IndexError, ValueError):
                 return default
 
+        pe_ttm = safe_float(39)       # 市盈率（TTM）
+        pe_dynamic = safe_float(45)    # 市盈率（动态/Forward）
+
+        # 近似计算盈利增长率：通过 PE_TTM 与 PE_dynamic 的比值估算
+        earnings_growth = None
+        if (pe_ttm is not None and pe_dynamic is not None
+                and pe_ttm > 0 and pe_dynamic > 0):
+            earnings_growth = round((pe_ttm / pe_dynamic - 1) * 100, 2)
+            if earnings_growth < 0:
+                earnings_growth = None  # 负增长不用于PEG计算
+
         return {
-            "pe":             safe_float(39),    # 市盈率（TTM）
-            "pb":             safe_float(47),    # 市净率
-            "roe":            safe_float(57),    # 净资产收益率%
-            "eps":            safe_float(58),    # 每股收益
-            "dividend_yield": safe_float(43),    # 股息率%
-            "ps":             safe_float(64),    # 市销率
-            "week52_chg":     safe_float(51),    # 52周涨跌%
-            "market_cap_hkd": safe_float(69),    # 总市值HKD
+            "pe":             pe_ttm,               # 市盈率（TTM）
+            "pe_dynamic":     pe_dynamic,            # 市盈率（动态）
+            "pb":             safe_float(47),        # 市净率
+            "roe":            safe_float(57),        # 净资产收益率%
+            "eps":            safe_float(58),        # 每股收益
+            "dividend_yield": safe_float(43),        # 股息率%
+            "ps":             safe_float(64),        # 市销率
+            "week52_chg":     safe_float(51),        # 52周涨跌%
+            "market_cap_hkd": safe_float(69),        # 总市值HKD
+            "earnings_growth": earnings_growth,      # 近似盈利增长率%
+            # fcf_yield: 当前API不提供，未来接入财报数据后可补充
         }
     except Exception as e:
-        logging.warning(f"[fundamentals] 获取基本面数据失败 {ticker}: {e}")
+        logging.warning(f"[fundamentals] 获取基本面数据失败 {tc_code}: {e}")
         return {}
 
 
@@ -188,6 +202,10 @@ def fundamental_score_adjust(fund: dict, sector: str = None) -> int:
     if div is not None:
         if div > 5:   adj += 2  # 超高息
         elif div > 3: adj += 1  # 高息
+
+    # TODO: PEG评分依赖 earnings_growth，当前通过 PE_TTM/PE_dynamic 比值近似推算。
+    # FCF评分依赖 fcf_yield，当前数据源（腾讯行情API）不提供此字段，
+    # 需要接入港交所财报数据或第三方API后才能激活。
 
     # PEG 评分（PE / 盈利增长率）
     eps = fund.get("eps")

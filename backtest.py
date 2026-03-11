@@ -33,6 +33,11 @@ _ROUND_TRIP_FEE_PCT = _SINGLE_SIDE_FEE_PCT * 2  # 买卖双边
 # 滑点模拟（单边）
 SLIPPAGE_PCT = 0.05  # 0.05% 单边滑点（港股流动性较好的股票）
 
+# 生存者偏差折扣：回测池来自当前活跃股票，已退市/暂停交易的股票未被纳入
+# 历史研究表明生存者偏差通常高估回测结果 20-40%
+# 改进方案：使用历史成分股列表（如恒生指数历史成分）替代当前活跃列表
+SURVIVORSHIP_BIAS_DISCOUNT = 0.7  # 30% 折扣
+
 
 def backtest_analyze(df, ticker, config_obj):
     """
@@ -140,6 +145,8 @@ def backtest_analyze(df, ticker, config_obj):
         elif mom_i > 5:
             score += 1
         elif mom_i < -10:
+            score -= 2
+        elif mom_i < -5:
             score -= 1
 
         # 评分钳位（与实盘一致）
@@ -159,25 +166,35 @@ def backtest_analyze(df, ticker, config_obj):
 
 # ── 风险指标计算 ──────────────────────────────────────────
 
-def _calc_risk_metrics(daily_returns: list[float], annual_factor: int = 252) -> dict:
+def _calc_risk_metrics(trade_returns: list[float], total_days: int = None) -> dict:
     """
     计算 Sharpe 比率、Calmar 比率、最大回撤等风险指标。
-    daily_returns: 每日收益率列表（百分比形式，如 1.5 表示 +1.5%）
+    trade_returns: 每笔交易收益率列表（百分比形式，如 1.5 表示 +1.5%）
+    total_days: 交易期间的总交易日数（用于正确年化）。
+                如果提供，使用 trades_per_year = len(trade_returns) / total_days * 252
+                来代替直接使用 252 作为年化因子。
     """
-    if not daily_returns or len(daily_returns) < 5:
+    if not trade_returns or len(trade_returns) < 5:
         return {"sharpe": 0, "calmar": 0, "max_drawdown_pct": 0, "annual_return_pct": 0}
 
-    returns = np.array(daily_returns) / 100  # 转为小数
+    returns = np.array(trade_returns) / 100  # 转为小数
     mean_ret = np.mean(returns)
     std_ret = np.std(returns, ddof=1)
+    num_trades = len(returns)
+
+    # 计算年化因子：基于交易频率而非假设每日一笔交易
+    if total_days and total_days > 0:
+        trades_per_year = num_trades / total_days * 252
+    else:
+        trades_per_year = 252  # fallback（不推荐）
 
     # 年化收益
-    annual_return = mean_ret * annual_factor
-    annual_std = std_ret * math.sqrt(annual_factor)
+    annual_return = mean_ret * trades_per_year
+    annual_std = std_ret * math.sqrt(trades_per_year)
 
     # Sharpe ratio（假设无风险利率 3.5%/年，港元存款利率近似）
-    risk_free_daily = 0.035 / annual_factor
-    sharpe = (mean_ret - risk_free_daily) / std_ret * math.sqrt(annual_factor) if std_ret > 0 else 0
+    risk_free_per_trade = 0.035 / trades_per_year if trades_per_year > 0 else 0
+    sharpe = (mean_ret - risk_free_per_trade) / std_ret * math.sqrt(trades_per_year) if std_ret > 0 else 0
 
     # 最大回撤
     cumulative = np.cumprod(1 + returns)
@@ -269,14 +286,31 @@ def _run_full(tickers, days=90):
     wins = [t for t in sells if t.get("pnl_pct", 0) > 0]
     pnl_list = [t.get("pnl_pct", 0) for t in sells]
 
-    # 风险指标
-    risk_metrics = _calc_risk_metrics(daily_portfolio_returns)
+    # 计算交易日跨度（用于正确年化 Sharpe 等指标）
+    total_days = None
+    if len(all_trades) >= 2:
+        from datetime import datetime as _dt
+        trade_dates = [t["date"] for t in all_trades]
+        try:
+            first_date = _dt.strptime(trade_dates[0], "%Y-%m-%d")
+            last_date = _dt.strptime(trade_dates[-1], "%Y-%m-%d")
+            span_days = (last_date - first_date).days
+            if span_days > 0:
+                total_days = int(span_days * 252 / 365)
+        except (ValueError, TypeError):
+            pass
+
+    # 风险指标（传入 total_days 以正确年化 per-trade returns）
+    risk_metrics = _calc_risk_metrics(daily_portfolio_returns, total_days=total_days)
+
+    win_rate = round(len(wins) / max(1, len(sells)) * 100, 1)
+    avg_pnl = round(sum(pnl_list) / max(1, len(sells)), 2)
 
     results["summary"] = {
         "total_trades": len(all_trades),
         "sell_trades": len(sells),
-        "win_rate": round(len(wins) / max(1, len(sells)) * 100, 1),
-        "avg_pnl": round(sum(pnl_list) / max(1, len(sells)), 2),
+        "win_rate": win_rate,
+        "avg_pnl": avg_pnl,
         "total_pnl": round(sum(pnl_list), 2),
         "max_single_win": round(max(pnl_list) if pnl_list else 0, 2),
         "max_single_loss": round(min(pnl_list) if pnl_list else 0, 2),
@@ -284,6 +318,9 @@ def _run_full(tickers, days=90):
         "slippage_pct_roundtrip": round(SLIPPAGE_PCT * 2, 3),
         **risk_metrics,
         "survivorship_bias_warning": True,
+        # 生存者偏差调整后的指标（打折 30%）
+        "adjusted_win_rate": round(win_rate * SURVIVORSHIP_BIAS_DISCOUNT, 1),
+        "adjusted_avg_pnl": round(avg_pnl * SURVIVORSHIP_BIAS_DISCOUNT, 2),
     }
     results["trades"] = all_trades
 
@@ -301,7 +338,15 @@ def _run_full(tickers, days=90):
     print(f"    最大回撤:       {results['summary']['max_drawdown_pct']}%")
     print(f"    年化收益:       {results['summary']['annual_return_pct']}%")
     print(f"    年化波动:       {results['summary'].get('annual_volatility_pct', 0)}%")
-    print(f"\n  ⚠️ 以上结果存在生存者偏差，实际表现可能不如回测")
+    print(f"\n  {'!'*50}")
+    print(f"  ⚠️  生存者偏差警告 ⚠️")
+    print(f"  回测池来自当前活跃股票，已退市/暂停交易的股票未被纳入。")
+    print(f"  历史研究表明这通常导致回测结果高估 20-40%。")
+    print(f"  以下为打折 {int((1-SURVIVORSHIP_BIAS_DISCOUNT)*100)}% 后的调整指标：")
+    print(f"    调整后胜率:     {results['summary']['adjusted_win_rate']}%")
+    print(f"    调整后平均盈亏: {results['summary']['adjusted_avg_pnl']}%")
+    print(f"  改进方案：使用历史成分股列表替代当前活跃列表")
+    print(f"  {'!'*50}")
 
     return results
 

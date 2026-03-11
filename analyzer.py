@@ -8,6 +8,7 @@ import os
 import time
 from real_data import fetch_history, fetch_realtime
 from indicators import calc_rsi, calc_macd, calc_bollinger, calc_adx, calc_atr, calc_momentum
+from position_manager import get_hkd_to_cny as _get_rate
 
 # 股票名称缓存（由动态筛选填充）
 NAME_CACHE = {}
@@ -135,7 +136,15 @@ def analyze_stock(ticker, config):
             score -= 1
             signals.append(f"ADX={latest['adx']}（强趋势，逆势风险加大）")
     elif latest.get("adx", 0) < 15 and latest.get("adx", 0) > 0:
-        signals.append(f"ADX={latest['adx']}（趋势较弱，震荡市）")
+        # 弱趋势中，信号可靠性降低
+        if score > 2:
+            score -= 1
+            signals.append(f"ADX={latest['adx']}（趋势弱，信号可靠性降低，评分-1）")
+        elif score < -2:
+            score += 1
+            signals.append(f"ADX={latest['adx']}（趋势弱，信号可靠性降低，评分+1）")
+        else:
+            signals.append(f"ADX={latest['adx']}（趋势较弱，震荡市）")
 
     # 成交量信号（增强权重 + 量价背离检测）
     if latest["volume_ratio"] > config.VOLUME_SPIKE:
@@ -175,8 +184,11 @@ def analyze_stock(ticker, config):
             score += 1
             signals.append(f"正向动量+{latest_momentum:.1f}%")
         elif latest_momentum < -10:
+            score -= 2
+            signals.append(f"严重弱势动量{latest_momentum:.1f}%（{config.MOMENTUM_PERIOD}日跌幅大，权重增强）")
+        elif latest_momentum < -5:
             score -= 1
-            signals.append(f"弱势动量{latest_momentum:.1f}%（{config.MOMENTUM_PERIOD}日跌幅大）")
+            signals.append(f"弱势动量{latest_momentum:.1f}%（{config.MOMENTUM_PERIOD}日跌幅明显）")
 
     # 跌幅超大时区分技术性超跌和利空恐慌
     if latest["change_pct"] < -5:
@@ -220,7 +232,7 @@ def analyze_stock(ticker, config):
             # 止损距离 = ATR * multiplier (HKD)
             stop_distance_hkd = latest_atr * config.ATR_MULTIPLIER
             # 可买股数 = risk / stop_distance / rate
-            rate = 0.885  # 粗略汇率用于初步估算，实际交易时用实时汇率
+            rate = _get_rate()
             shares_by_risk = risk_per_trade / (stop_distance_hkd * rate)
             atr_position_cny = shares_by_risk * latest["price"] * rate
 
@@ -416,7 +428,7 @@ def run_analysis(config, use_dynamic=True):
         else:
             base_pos = 0
         # 市场仓位倍数调节（bearish 时减仓，bullish 时可适度加仓）
-        adjusted_pos = int(base_pos * position_multiplier)
+        adjusted_pos = min(int(base_pos * position_multiplier), config.MAX_POSITION)
         # 取 ATR 仓位和调节后仓位的较小值
         atr_pos = r.get("suggested_position_cny", adjusted_pos)
         r["suggested_position_cny"] = min(adjusted_pos, atr_pos) if atr_pos > 0 else adjusted_pos

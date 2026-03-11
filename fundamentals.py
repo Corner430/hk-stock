@@ -9,6 +9,7 @@ import requests
 import re
 import time
 import json
+import logging
 from datetime import datetime, timedelta
 
 HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://gu.qq.com/"}
@@ -49,7 +50,8 @@ def fetch_fundamentals(tc_code: str) -> dict:
             "week52_chg":     safe_float(51),    # 52周涨跌%
             "market_cap_hkd": safe_float(69),    # 总市值HKD
         }
-    except Exception:
+    except Exception as e:
+        logging.warning(f"[fundamentals] 获取基本面数据失败 {ticker}: {e}")
         return {}
 
 

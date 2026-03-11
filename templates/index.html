@@ -180,6 +180,11 @@ function switchTab(name) {
   });
 }
 
+function escHtml(s){
+  if(typeof s!=='string')return s==null?'':s;
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
 function getRsiColor(rsi){
   if(rsi<35)return'#3fb950';if(rsi>70)return'#f85149';return'#58a6ff';
 }
@@ -197,13 +202,13 @@ function renderCard(s){
   const rsiColor=getRsiColor(s.rsi);
   const scColor=getScoreColor(s.score);
   const scPct=Math.max(0,Math.min(100,(s.score+10)*5));
-  const sigs=(s.signals||[]).slice(0,3).map(sg=>`<li>${sg}</li>`).join('');
+  const sigs=(s.signals||[]).slice(0,3).map(sg=>`<li>${escHtml(sg)}</li>`).join('');
   const posHint=s.suggested_position_cny>0
     ?`<div class="pos-hint">建议仓位：<span>¥${s.suggested_position_cny.toLocaleString()}</span></div>`:'';
   return`<div class="stock-card ${cardCls}">
     <div class="card-header">
-      <div><div class="stock-name">${s.name||s.ticker}</div><div class="stock-ticker">${s.ticker} · ${s.date}</div></div>
-      <span class="badge ${badgeCls}">${s.action}</span>
+      <div><div class="stock-name">${escHtml(s.name||s.ticker)}</div><div class="stock-ticker">${escHtml(s.ticker)} · ${escHtml(s.date)}</div></div>
+      <span class="badge ${badgeCls}">${escHtml(s.action)}</span>
     </div>
     <div class="price-row">
       <span class="price">${s.price}</span>
@@ -215,7 +220,7 @@ function renderCard(s){
       <div class="ind"><div class="v" style="color:${s.macd>s.macd_signal?'#3fb950':'#f85149'}">${s.macd>0?'多头':'空头'}</div><div class="l">MACD</div></div>
     </div>
     <ul class="signals">${sigs}</ul>
-    ${s.ai_analysis?`<div class="pos-hint" style="border-left:3px solid #58a6ff;margin-top:8px"><span style="color:#58a6ff">🤖 AI集成</span> ${s.ai_analysis.action||''}（${s.ai_analysis.score||'?'}/10）${s.ai_analysis.models_used?` <span style="color:#8b949e">${s.ai_analysis.models_used}模型`:''} ${s.ai_analysis.consensus!=null?`一致性${Math.round(s.ai_analysis.consensus*100)}%</span>`:''} ${s.ai_analysis.model_details?`<br><span style="color:#8b949e;font-size:11px">${s.ai_analysis.model_details.map(d=>d.model+':'+d.score+'/10').join(' | ')}</span>`:''} ${s.ai_analysis.risk?`<br><span style="color:#d29922">${s.ai_analysis.risk.slice(0,50)}</span>`:''}</div>`:''}
+    ${s.ai_analysis?`<div class="pos-hint" style="border-left:3px solid #58a6ff;margin-top:8px"><span style="color:#58a6ff">🤖 AI集成</span> ${escHtml(s.ai_analysis.action||'')}（${s.ai_analysis.score||'?'}/10）${s.ai_analysis.models_used?` <span style="color:#8b949e">${s.ai_analysis.models_used}模型`:''} ${s.ai_analysis.consensus!=null?`一致性${Math.round(s.ai_analysis.consensus*100)}%</span>`:''} ${s.ai_analysis.model_details?`<br><span style="color:#8b949e;font-size:11px">${s.ai_analysis.model_details.map(d=>escHtml(d.model)+':'+d.score+'/10').join(' | ')}</span>`:''} ${s.ai_analysis.risk?`<br><span style="color:#d29922">${escHtml(s.ai_analysis.risk.slice(0,50))}</span>`:''}</div>`:''}
     <div class="score-bar">
       <span class="score-lbl">评分</span>
       <div class="score-track"><div class="score-fill" style="width:${scPct}%;background:${scColor}"></div></div>
@@ -339,7 +344,7 @@ async function loadAll(){
         const pp=((cp/ps.avg_cost_hkd-1)*100).toFixed(2);
         const cls=pp>=0?'up':'down';
         return`<tr>
-          <td>${ps.name}</td><td style="color:#8b949e">${tk}</td>
+          <td>${escHtml(ps.name)}</td><td style="color:#8b949e">${escHtml(tk)}</td>
           <td>${ps.shares.toLocaleString()}</td>
           <td>${ps.avg_cost_hkd}</td><td>${cp}</td>
           <td class="${cls}">${pp>=0?'+':''}${pp}%</td>
@@ -357,9 +362,9 @@ async function loadAll(){
         return`<tr>
           <td style="color:#8b949e">${t.date}</td>
           <td><span class="badge ${isBuy?'badge-buy':'badge-sell'}">${isBuy?'买入':'卖出'}</span></td>
-          <td>${t.name}</td><td>${t.shares}</td><td>${t.price_hkd}</td>
+          <td>${escHtml(t.name)}</td><td>${t.shares}</td><td>${t.price_hkd}</td>
           <td class="${amtCls}">${amt}</td>${pnlTd}
-          <td style="color:#8b949e;font-size:12px">${t.reason||''}</td>
+          <td style="color:#8b949e;font-size:12px">${escHtml(t.reason||'')}</td>
         </tr>`;
       });
       document.getElementById('tradeTable').innerHTML=trows.length?trows.join(''):'<tr><td colspan="8" style="text-align:center;color:#8b949e;padding:20px">暂无记录</td></tr>';

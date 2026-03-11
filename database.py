@@ -10,103 +10,108 @@ import sqlite3
 import json
 import os
 import logging
+from contextlib import contextmanager
 from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "hkstock.db")
 
+@contextmanager
 def get_conn():
+    """获取数据库连接（上下文管理器，自动关闭）"""
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row   # 让结果可以用列名访问
     conn.execute("PRAGMA journal_mode=WAL")  # 写多读多更安全
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 def init_db():
     """建表（幂等，已存在不报错）"""
-    conn = get_conn()
-    c = conn.cursor()
+    with get_conn() as conn:
+        c = conn.cursor()
 
-    # ── 1. 每日股票行情 + 技术指标 ──
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS stocks_daily (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        date        TEXT NOT NULL,
-        ticker      TEXT NOT NULL,
-        name        TEXT,
-        price       REAL,
-        change_pct  REAL,
-        volume      REAL,
-        rsi         REAL,
-        macd        REAL,
-        macd_signal REAL,
-        bb_upper    REAL,
-        bb_lower    REAL,
-        ma10        REAL,
-        ma30        REAL,
-        score       INTEGER,
-        action      TEXT,
-        signals     TEXT,        -- JSON 数组
-        suggested_position_cny REAL,
-        created_at  TEXT DEFAULT (datetime('now','localtime')),
-        UNIQUE(date, ticker)     -- 同一天同一只股票只存一条
-    )""")
+        # ── 1. 每日股票行情 + 技术指标 ──
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS stocks_daily (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            date        TEXT NOT NULL,
+            ticker      TEXT NOT NULL,
+            name        TEXT,
+            price       REAL,
+            change_pct  REAL,
+            volume      REAL,
+            rsi         REAL,
+            macd        REAL,
+            macd_signal REAL,
+            bb_upper    REAL,
+            bb_lower    REAL,
+            ma10        REAL,
+            ma30        REAL,
+            score       INTEGER,
+            action      TEXT,
+            signals     TEXT,        -- JSON 数组
+            suggested_position_cny REAL,
+            created_at  TEXT DEFAULT (datetime('now','localtime')),
+            UNIQUE(date, ticker)     -- 同一天同一只股票只存一条
+        )""")
 
-    # ── 2. 交易记录 ──
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS trades (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        run_id      TEXT,        -- 关联回测或实盘的运行ID
-        date        TEXT NOT NULL,
-        action      TEXT NOT NULL,  -- BUY / SELL
-        ticker      TEXT NOT NULL,
-        name        TEXT,
-        shares      INTEGER,
-        price_hkd   REAL,
-        cost_cny    REAL,        -- 买入总成本（含手续费）
-        revenue_cny REAL,        -- 卖出收入
-        pnl_cny     REAL,        -- 盈亏（卖出时）
-        pnl_pct     REAL,
-        reason      TEXT,
-        created_at  TEXT DEFAULT (datetime('now','localtime'))
-    )""")
+        # ── 2. 交易记录 ──
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS trades (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id      TEXT,        -- 关联回测或实盘的运行ID
+            date        TEXT NOT NULL,
+            action      TEXT NOT NULL,  -- BUY / SELL
+            ticker      TEXT NOT NULL,
+            name        TEXT,
+            shares      INTEGER,
+            price_hkd   REAL,
+            cost_cny    REAL,        -- 买入总成本（含手续费）
+            revenue_cny REAL,        -- 卖出收入
+            pnl_cny     REAL,        -- 盈亏（卖出时）
+            pnl_pct     REAL,
+            reason      TEXT,
+            created_at  TEXT DEFAULT (datetime('now','localtime'))
+        )""")
 
-    # ── 3. 每日资产快照（净值曲线数据）──
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS portfolio_snapshots (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        run_id          TEXT,
-        date            TEXT NOT NULL,
-        cash_cny        REAL,
-        position_value_cny REAL,
-        total_value_cny REAL,
-        total_return_cny REAL,
-        total_return_pct REAL,
-        positions_count INTEGER,
-        positions_detail TEXT,   -- JSON，持仓明细快照
-        created_at      TEXT DEFAULT (datetime('now','localtime')),
-        UNIQUE(run_id, date)
-    )""")
+        # ── 3. 每日资产快照（净值曲线数据）──
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id          TEXT,
+            date            TEXT NOT NULL,
+            cash_cny        REAL,
+            position_value_cny REAL,
+            total_value_cny REAL,
+            total_return_cny REAL,
+            total_return_pct REAL,
+            positions_count INTEGER,
+            positions_detail TEXT,   -- JSON，持仓明细快照
+            created_at      TEXT DEFAULT (datetime('now','localtime')),
+            UNIQUE(run_id, date)
+        )""")
 
-    # ── 4. 回测/实盘运行记录 ──
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS backtest_runs (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        run_id          TEXT UNIQUE NOT NULL,
-        strategy        TEXT,    -- v1 / v2 / live
-        start_date      TEXT,
-        end_date        TEXT,
-        initial_capital REAL,
-        final_value     REAL,
-        return_pct      REAL,
-        buy_count       INTEGER,
-        sell_count      INTEGER,
-        stop_loss_count INTEGER,
-        notes           TEXT,    -- JSON，可以存任意附加信息
-        created_at      TEXT DEFAULT (datetime('now','localtime'))
-    )""")
+        # ── 4. 回测/实盘运行记录 ──
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS backtest_runs (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id          TEXT UNIQUE NOT NULL,
+            strategy        TEXT,    -- v1 / v2 / live
+            start_date      TEXT,
+            end_date        TEXT,
+            initial_capital REAL,
+            final_value     REAL,
+            return_pct      REAL,
+            buy_count       INTEGER,
+            sell_count       INTEGER,
+            stop_loss_count INTEGER,
+            notes           TEXT,    -- JSON，可以存任意附加信息
+            created_at      TEXT DEFAULT (datetime('now','localtime'))
+        )""")
 
-    conn.commit()
-    conn.close()
+        conn.commit()
     print(f"✅ 数据库初始化完成: {DB_PATH}")
 
 # ─────────────────────────────────────────────
@@ -115,92 +120,88 @@ def init_db():
 
 def save_stocks_daily(records: list[dict]):
     """批量保存每日分析结果（来自 analyzer.py 的 stocks 列表）"""
-    conn = get_conn()
-    c = conn.cursor()
-    for r in records:
-        c.execute("""
-        INSERT INTO stocks_daily
-            (date, ticker, name, price, change_pct, volume,
-             rsi, macd, macd_signal, bb_upper, bb_lower, ma10, ma30,
-             score, action, signals, suggested_position_cny)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        ON CONFLICT(date, ticker) DO UPDATE SET
-            price=excluded.price, change_pct=excluded.change_pct,
-            score=excluded.score, action=excluded.action,
-            rsi=excluded.rsi, macd=excluded.macd,
-            signals=excluded.signals, suggested_position_cny=excluded.suggested_position_cny
-        """, (
-            r.get("date"), r.get("ticker"), r.get("name"),
-            r.get("price"), r.get("change_pct"), r.get("volume"),
-            r.get("rsi"), r.get("macd"), r.get("macd_signal"),
-            r.get("bb_upper"), r.get("bb_lower"),
-            r.get("ma_short"), r.get("ma_long"),
-            r.get("score"), r.get("action"),
-            json.dumps(r.get("signals", []), ensure_ascii=False),
-            r.get("suggested_position_cny", 0),
-        ))
-    conn.commit()
-    conn.close()
+    with get_conn() as conn:
+        c = conn.cursor()
+        for r in records:
+            c.execute("""
+            INSERT INTO stocks_daily
+                (date, ticker, name, price, change_pct, volume,
+                 rsi, macd, macd_signal, bb_upper, bb_lower, ma10, ma30,
+                 score, action, signals, suggested_position_cny)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(date, ticker) DO UPDATE SET
+                price=excluded.price, change_pct=excluded.change_pct,
+                score=excluded.score, action=excluded.action,
+                rsi=excluded.rsi, macd=excluded.macd,
+                signals=excluded.signals, suggested_position_cny=excluded.suggested_position_cny
+            """, (
+                r.get("date"), r.get("ticker"), r.get("name"),
+                r.get("price"), r.get("change_pct"), r.get("volume"),
+                r.get("rsi"), r.get("macd"), r.get("macd_signal"),
+                r.get("bb_upper"), r.get("bb_lower"),
+                r.get("ma_short"), r.get("ma_long"),
+                r.get("score"), r.get("action"),
+                json.dumps(r.get("signals", []), ensure_ascii=False),
+                r.get("suggested_position_cny", 0),
+            ))
+        conn.commit()
 
 def save_trade(run_id: str, trade: dict):
     """保存一笔交易"""
-    conn = get_conn()
-    conn.execute("""
-    INSERT INTO trades (run_id, date, action, ticker, name, shares,
-        price_hkd, cost_cny, revenue_cny, pnl_cny, pnl_pct, reason)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-    """, (
-        run_id, trade.get("date"), trade.get("action"),
-        trade.get("ticker"), trade.get("name"), trade.get("shares"),
-        trade.get("price_hkd"), trade.get("cost_cny", 0),
-        trade.get("revenue_cny", 0), trade.get("pnl_cny", 0),
-        trade.get("pnl_pct", 0), trade.get("reason", ""),
-    ))
-    conn.commit()
-    conn.close()
+    with get_conn() as conn:
+        conn.execute("""
+        INSERT INTO trades (run_id, date, action, ticker, name, shares,
+            price_hkd, cost_cny, revenue_cny, pnl_cny, pnl_pct, reason)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            run_id, trade.get("date"), trade.get("action"),
+            trade.get("ticker"), trade.get("name"), trade.get("shares"),
+            trade.get("price_hkd"), trade.get("cost_cny", 0),
+            trade.get("revenue_cny", 0), trade.get("pnl_cny", 0),
+            trade.get("pnl_pct", 0), trade.get("reason", ""),
+        ))
+        conn.commit()
 
 def save_snapshot(run_id: str, snap: dict, positions_detail: dict = None):
     """保存每日资产快照"""
-    conn = get_conn()
-    conn.execute("""
-    INSERT INTO portfolio_snapshots
-        (run_id, date, cash_cny, position_value_cny, total_value_cny,
-         total_return_cny, total_return_pct, positions_count, positions_detail)
-    VALUES (?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(run_id, date) DO UPDATE SET
-        total_value_cny=excluded.total_value_cny,
-        total_return_pct=excluded.total_return_pct,
-        positions_detail=excluded.positions_detail
-    """, (
-        run_id, snap.get("date"),
-        snap.get("cash_cny"), snap.get("position_value_cny"),
-        snap.get("total_value_cny"), snap.get("total_return_cny"),
-        snap.get("total_return_pct"), snap.get("positions_count"),
-        json.dumps(positions_detail or {}, ensure_ascii=False),
-    ))
-    conn.commit()
-    conn.close()
+    with get_conn() as conn:
+        conn.execute("""
+        INSERT INTO portfolio_snapshots
+            (run_id, date, cash_cny, position_value_cny, total_value_cny,
+             total_return_cny, total_return_pct, positions_count, positions_detail)
+        VALUES (?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(run_id, date) DO UPDATE SET
+            total_value_cny=excluded.total_value_cny,
+            total_return_pct=excluded.total_return_pct,
+            positions_detail=excluded.positions_detail
+        """, (
+            run_id, snap.get("date"),
+            snap.get("cash_cny"), snap.get("position_value_cny"),
+            snap.get("total_value_cny"), snap.get("total_return_cny"),
+            snap.get("total_return_pct"), snap.get("positions_count"),
+            json.dumps(positions_detail or {}, ensure_ascii=False),
+        ))
+        conn.commit()
 
 def save_backtest_run(run_id: str, meta: dict):
     """保存回测汇总"""
-    conn = get_conn()
-    conn.execute("""
-    INSERT INTO backtest_runs
-        (run_id, strategy, start_date, end_date, initial_capital,
-         final_value, return_pct, buy_count, sell_count, stop_loss_count, notes)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(run_id) DO UPDATE SET
-        final_value=excluded.final_value,
-        return_pct=excluded.return_pct
-    """, (
-        run_id, meta.get("strategy"), meta.get("start_date"), meta.get("end_date"),
-        meta.get("initial_capital", 100000), meta.get("final_value"),
-        meta.get("return_pct"), meta.get("buy_count", 0),
-        meta.get("sell_count", 0), meta.get("stop_loss_count", 0),
-        json.dumps(meta.get("notes", {}), ensure_ascii=False),
-    ))
-    conn.commit()
-    conn.close()
+    with get_conn() as conn:
+        conn.execute("""
+        INSERT INTO backtest_runs
+            (run_id, strategy, start_date, end_date, initial_capital,
+             final_value, return_pct, buy_count, sell_count, stop_loss_count, notes)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(run_id) DO UPDATE SET
+            final_value=excluded.final_value,
+            return_pct=excluded.return_pct
+        """, (
+            run_id, meta.get("strategy"), meta.get("start_date"), meta.get("end_date"),
+            meta.get("initial_capital", 100000), meta.get("final_value"),
+            meta.get("return_pct"), meta.get("buy_count", 0),
+            meta.get("sell_count", 0), meta.get("stop_loss_count", 0),
+            json.dumps(meta.get("notes", {}), ensure_ascii=False),
+        ))
+        conn.commit()
 
 # ─────────────────────────────────────────────
 # 查询函数
@@ -208,10 +209,9 @@ def save_backtest_run(run_id: str, meta: dict):
 
 def query(sql, params=()):
     """通用查询，返回 list[dict]"""
-    conn = get_conn()
-    rows = conn.execute(sql, params).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    with get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
 
 def get_latest_signals(date=None):
     """获取最新一天的信号（默认最新日期）"""
@@ -268,7 +268,6 @@ if __name__ == "__main__":
     init_db()
 
     # 测试写入和查询
-    import uuid
     run_id = "test_" + datetime.now().strftime("%Y%m%d%H%M%S")
 
     save_backtest_run(run_id, {

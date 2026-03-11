@@ -2,9 +2,21 @@
 Flask Web 看板服务（含净值曲线图表）
 """
 from flask import Flask, jsonify, request
-import json, os, subprocess, sys
+import json, os, subprocess, sys, threading
 
 app = Flask(__name__)
+
+# ── HTTP Basic Auth（在 .env 中配置 DASHBOARD_USER / DASHBOARD_PASS 开启）──
+DASHBOARD_USER = os.environ.get("DASHBOARD_USER", "")
+DASHBOARD_PASS = os.environ.get("DASHBOARD_PASS", "")
+
+@app.before_request
+def check_auth():
+    if not DASHBOARD_USER:
+        return  # 未配置则不启用认证
+    auth = request.authorization
+    if not auth or auth.username != DASHBOARD_USER or auth.password != DASHBOARD_PASS:
+        return ("Unauthorized", 401, {"WWW-Authenticate": 'Basic realm="HK-Stock Dashboard"'})
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
 
@@ -30,12 +42,18 @@ def api_portfolio():
     with open(f, encoding="utf-8") as fp:
         return jsonify(json.load(fp))
 
+_refresh_lock = threading.Lock()
+
 @app.route("/api/refresh", methods=["POST"])
 def api_refresh():
-    import threading
+    if not _refresh_lock.acquire(blocking=False):
+        return jsonify({"status": "already_running"}), 429
     def run():
-        script = os.path.join(os.path.dirname(__file__), "daily_report.py")
-        subprocess.run([sys.executable, script], cwd=os.path.dirname(__file__))
+        try:
+            script = os.path.join(os.path.dirname(__file__), "daily_report.py")
+            subprocess.run([sys.executable, script], cwd=os.path.dirname(__file__))
+        finally:
+            _refresh_lock.release()
     threading.Thread(target=run, daemon=True).start()
     return jsonify({"status": "started"})
 
@@ -97,4 +115,4 @@ def api_db_stats():
 if __name__ == "__main__":
     print("🚀 启动港股分析看板...")
     print("📊 访问 http://localhost:8888 查看看板")
-    app.run(host="0.0.0.0", port=8888, debug=False)
+    app.run(host=os.environ.get("DASHBOARD_HOST", "127.0.0.1"), port=int(os.environ.get("DASHBOARD_PORT", 8888)), debug=False)

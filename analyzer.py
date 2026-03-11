@@ -46,7 +46,7 @@ def analyze_stock(ticker, config):
         try:
             v = float(val)
             return v if not (v != v) else default  # NaN check
-        except:
+        except (TypeError, ValueError):
             return default
 
     # 转换 ADX 值
@@ -307,6 +307,36 @@ def run_analysis(config, use_dynamic=True):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] AI 分析完成，{ai_count} 只股票获得 AI 评分")
     except Exception as e:
         print(f"[WARN] AI 分析失败（不影响主流程）: {e}")
+
+    # ── 最终评分钳位 + 重新映射 action / suggested_position_cny ──
+    for r in results:
+        if r.get("score") == -99:   # 已被基本面排除，保留原标记
+            continue
+        # 钳位到 [-10, +10]
+        r["score"] = max(-10, min(10, r["score"]))
+        # 重新映射 action
+        sc = r["score"]
+        if sc >= 6:
+            r["action"] = "强烈买入"
+        elif sc >= 4:
+            r["action"] = "买入"
+        elif sc >= 3:
+            r["action"] = "试探性买入"
+        elif sc <= -4:
+            r["action"] = "考虑卖出"
+        elif sc <= -1:
+            r["action"] = "观望/减仓"
+        else:
+            r["action"] = "持有观望"
+        # 重新映射建议仓位
+        if sc >= 6:
+            r["suggested_position_cny"] = int(config.TOTAL_CAPITAL * 0.15)
+        elif sc >= 4:
+            r["suggested_position_cny"] = int(config.TOTAL_CAPITAL * 0.10)
+        elif sc >= 3:
+            r["suggested_position_cny"] = int(config.TOTAL_CAPITAL * 0.05)
+        else:
+            r["suggested_position_cny"] = 0
 
     # 按评分排序
     results.sort(key=lambda x: x["score"], reverse=True)

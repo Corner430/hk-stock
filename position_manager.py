@@ -2,6 +2,7 @@
 仓位管理 + 持仓跟踪 + 止损止盈检测 + 交易费用计算 + 汇率
 """
 import json
+import fcntl
 import math
 import os
 import time
@@ -12,9 +13,6 @@ import config
 from real_data import fetch_realtime
 
 PORTFOLIO_FILE = os.path.join(os.path.dirname(__file__), "data", "portfolio.json")
-
-STOP_LOSS_PCT = -8.0
-TAKE_PROFIT_PCT = +15.0
 
 # ── 汇率 ──────────────────────────────────────────────────
 
@@ -32,7 +30,8 @@ def get_hkd_to_cny() -> float:
         _rate_cache["value"] = rate
         _rate_cache["time"] = now
         return rate
-    except Exception:
+    except Exception as e:
+        logging.warning(f"[position] 获取 HKD/CNY 汇率失败: {e}")
         return _rate_cache["value"] or 0.885
 
 
@@ -60,7 +59,11 @@ def calc_trade_fee_hkd(amount_hkd: float) -> float:
 def load_portfolio() -> dict:
     if os.path.exists(PORTFOLIO_FILE):
         with open(PORTFOLIO_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            fcntl.flock(f, fcntl.LOCK_SH)  # 共享读锁
+            try:
+                return json.load(f)
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
     return {
         "total_capital_cny": config.TOTAL_CAPITAL,
         "cash_cny": config.TOTAL_CAPITAL,
@@ -74,7 +77,11 @@ def load_portfolio() -> dict:
 def save_portfolio(portfolio: dict):
     os.makedirs(os.path.dirname(PORTFOLIO_FILE), exist_ok=True)
     with open(PORTFOLIO_FILE, "w", encoding="utf-8") as f:
-        json.dump(portfolio, f, ensure_ascii=False, indent=2)
+        fcntl.flock(f, fcntl.LOCK_EX)  # 独占写锁
+        try:
+            json.dump(portfolio, f, ensure_ascii=False, indent=2)
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 # ── 仓位限制检查 ──────────────────────────────────────────
@@ -139,7 +146,7 @@ def check_stop_loss_take_profit(portfolio) -> list[dict]:
         elif pnl_pct > 5:
             trailing_stop = avg_cost * 1.02
         else:
-            trailing_stop = avg_cost * (1 + STOP_LOSS_PCT / 100)
+            trailing_stop = avg_cost * (1 - config.STOP_LOSS_PCT)
 
         if current_price <= trailing_stop:
             action = "跟踪止盈" if pnl_pct > 0 else "止损"
@@ -153,7 +160,7 @@ def check_stop_loss_take_profit(portfolio) -> list[dict]:
                 "avg_cost": avg_cost,
                 "hold_days": hold_days,
             })
-        elif pnl_pct >= TAKE_PROFIT_PCT:
+        elif pnl_pct >= config.TAKE_PROFIT_PCT * 100:
             alerts.append({
                 "ticker": ticker,
                 "name": pos.get("name", ticker),

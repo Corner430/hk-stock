@@ -102,7 +102,7 @@ def detect_new_listings(scan_days: int = 120) -> list[dict]:
                 stock["days_listed"] = days_of_data
                 stock["first_trade_date"] = first_date
                 # 计算上市以来涨跌幅
-                first_price = float(df["close"].iloc[0])
+                first_price = float(df["Close"].iloc[0])
                 stock["ipo_chg_pct"] = round((stock["price"] / first_price - 1) * 100, 2)
                 new_listings.append(stock)
                 time.sleep(0.05)

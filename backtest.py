@@ -1,6 +1,10 @@
 """
 港股回测引擎（统一版）
 评分逻辑与实盘 analyzer.py 完全一致
+
+注意：当前回测仅包含技术面评分，未包含基本面/AI/板块/大盘等调整。
+回测结果可能与实盘策略存在偏差。后续可通过传入调整函数进行增强。
+
 支持多种回测模式：
   python backtest.py weekly           # 最近一周真实数据回测
   python backtest.py multiwindow      # 多区间回测（防过拟合）
@@ -14,13 +18,20 @@ import pandas as pd
 import numpy as np
 from real_data import fetch_history
 from indicators import calc_rsi, calc_macd, calc_bollinger, calc_adx
+from position_manager import calc_trade_fee_hkd
 import config
+
+# 交易费用估算（按每笔 10000 HKD 计算双边费率）
+_FEE_BASE_AMOUNT = 10000
+_SINGLE_SIDE_FEE_PCT = calc_trade_fee_hkd(_FEE_BASE_AMOUNT) / _FEE_BASE_AMOUNT * 100
+_ROUND_TRIP_FEE_PCT = _SINGLE_SIDE_FEE_PCT * 2  # 买卖双边
 
 
 def backtest_analyze(df, ticker, config_obj):
     """
     对单只股票在给定数据上执行技术分析，返回每日信号。
     评分逻辑与 analyzer.analyze_stock 完全一致。
+    注意：仅包含技术面评分，未包含基本面/AI/板块/大盘调整。
     """
     if df is None or len(df) < 30:
         return []
@@ -161,7 +172,7 @@ def _run_full(tickers, days=90):
                 })
             elif holding and sig["score"] <= -3:
                 holding = False
-                pnl_pct = (sig["price"] / buy_price - 1) * 100 if buy_price > 0 else 0
+                pnl_pct = (sig["price"] / buy_price - 1) * 100 - _ROUND_TRIP_FEE_PCT if buy_price > 0 else 0
                 all_trades.append({
                     "date": sig["date"], "ticker": ticker,
                     "action": "SELL", "price": sig["price"], "score": sig["score"],

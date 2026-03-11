@@ -1,15 +1,9 @@
 # 港股分析系统 - 配置文件
 import os
-from pathlib import Path
+from dotenv import load_dotenv
 
 # ── 加载 .env 文件 ──
-_env_file = Path(__file__).parent / ".env"
-if _env_file.exists():
-    for line in _env_file.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            key, _, val = line.partition("=")
-            os.environ.setdefault(key.strip(), val.strip())
+load_dotenv()
 
 # ── 环境配置（从 .env 或环境变量读取，不在代码中硬编码）──
 WECOM_TARGET = os.environ.get("WECOM_TARGET", "")

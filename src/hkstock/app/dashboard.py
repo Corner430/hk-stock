@@ -3,8 +3,7 @@ Flask Web 看板服务（含净值曲线图表）
 """
 from flask import Flask, jsonify, request
 import json, os, subprocess, sys, threading, time as _time
-
-_PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+from hkstock.core.config import PROJECT_ROOT, DATA_DIR, TEMPLATE_DIR
 
 app = Flask(__name__)
 
@@ -20,17 +19,15 @@ def check_auth():
     if not auth or auth.username != DASHBOARD_USER or auth.password != DASHBOARD_PASS:
         return ("Unauthorized", 401, {"WWW-Authenticate": 'Basic realm="HK-Stock Dashboard"'})
 
-TEMPLATE_DIR = os.path.join(_PROJECT_ROOT, "templates")
-
 @app.route("/")
 def index():
-    template_path = os.path.join(TEMPLATE_DIR, "index.html")
+    template_path = str(TEMPLATE_DIR / "index.html")
     with open(template_path, "r", encoding="utf-8") as f:
         return f.read()
 
 @app.route("/api/data")
 def api_data():
-    f = os.path.join(_PROJECT_ROOT, "data", "latest.json")
+    f = str(DATA_DIR / "latest.json")
     if not os.path.exists(f):
         return jsonify({"error": "no data", "stocks": [], "summary": {}}), 200
     with open(f, encoding="utf-8") as fp:
@@ -38,7 +35,7 @@ def api_data():
 
 @app.route("/api/portfolio")
 def api_portfolio():
-    f = os.path.join(_PROJECT_ROOT, "data", "portfolio.json")
+    f = str(DATA_DIR / "portfolio.json")
     if not os.path.exists(f):
         return jsonify({"error": "no portfolio"}), 200
     with open(f, encoding="utf-8") as fp:
@@ -56,7 +53,7 @@ def api_refresh():
     _refresh_status["finished_at"] = None
     def run():
         try:
-            subprocess.run([sys.executable, "-m", "hkstock.app.daily_report"], cwd=_PROJECT_ROOT)
+            subprocess.run([sys.executable, "-m", "hkstock.app.daily_report"], cwd=str(PROJECT_ROOT))
         finally:
             _refresh_status["status"] = "idle"
             _refresh_status["finished_at"] = _time.time()
@@ -76,7 +73,7 @@ def api_refresh_status():
             result["elapsed_seconds"] = round(_time.time() - started, 1)
     if finished:
         result["finished_at"] = finished
-    latest = os.path.join(_PROJECT_ROOT, "data", "latest.json")
+    latest = str(DATA_DIR / "latest.json")
     if os.path.exists(latest):
         result["data_updated_at"] = os.path.getmtime(latest)
     return jsonify(result)

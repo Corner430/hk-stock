@@ -459,7 +459,7 @@ def run_analysis(config, use_dynamic=True):
         "position_multiplier": position_multiplier,
     }
 
-    _data_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data")
+    _data_dir = str(config.DATA_DIR)
     os.makedirs(_data_dir, exist_ok=True)
     with open(os.path.join(_data_dir, "latest.json"), "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)

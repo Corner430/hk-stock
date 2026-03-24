@@ -11,8 +11,7 @@ import sys
 import os
 from datetime import datetime
 from hkstock.core import config
-
-WORKDIR = os.path.dirname(os.path.abspath(__file__))
+from hkstock.core.config import PROJECT_ROOT
 
 
 def log(msg):
@@ -38,7 +37,7 @@ def run_intraday_check():
              "from hkstock.trading.auto_trader import run_intraday_check; "
              "logs = run_intraday_check(); "
              "[print(l) for l in logs]"],
-            cwd=os.path.join(WORKDIR, "..", "..", ".."), capture_output=True, text=True, timeout=120
+            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=120
         )
         if result.returncode == 0:
             for line in result.stdout.strip().split("\n"):
@@ -59,7 +58,7 @@ def run_daily_analysis():
     try:
         result = subprocess.run(
             [sys.executable, "-m", "hkstock.app.daily_report"],
-            cwd=os.path.join(WORKDIR, "..", "..", ".."), capture_output=True, text=True, timeout=600
+            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=600
         )
         if result.returncode == 0:
             log("每日分析完成")

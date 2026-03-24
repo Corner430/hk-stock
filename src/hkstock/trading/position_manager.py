@@ -13,9 +13,10 @@ import logging
 from datetime import datetime
 import requests
 from hkstock.core import config
+from hkstock.core.config import DATA_DIR
 from hkstock.data.real_data import fetch_realtime
 
-PORTFOLIO_FILE = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "portfolio.json")
+PORTFOLIO_FILE = str(DATA_DIR / "portfolio.json")
 
 # ── 汇率 ──────────────────────────────────────────────────
 

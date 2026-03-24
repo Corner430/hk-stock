@@ -1,9 +1,23 @@
 # 港股分析系统 - 配置文件
 import os
+import pathlib
 from dotenv import load_dotenv
 
+# ── 项目根目录 ──
+def _find_project_root() -> pathlib.Path:
+    """Walk up from this file to find directory containing pyproject.toml."""
+    current = pathlib.Path(__file__).resolve().parent
+    for parent in [current] + list(current.parents):
+        if (parent / "pyproject.toml").exists():
+            return parent
+    return pathlib.Path.cwd()
+
+PROJECT_ROOT = _find_project_root()
+DATA_DIR = PROJECT_ROOT / "data"
+TEMPLATE_DIR = PROJECT_ROOT / "templates"
+
 # ── 加载 .env 文件 ──
-load_dotenv()
+load_dotenv(PROJECT_ROOT / ".env")
 
 # ── 环境配置（从 .env 或环境变量读取，不在代码中硬编码）──
 WECOM_TARGET = os.environ.get("WECOM_TARGET", "")
@@ -67,6 +81,19 @@ MOMENTUM_PERIOD = 20          # 动量计算周期（交易日）
 
 # 自由流通股比例
 MIN_FREE_FLOAT_PCT = 15.0     # 最低自由流通比例%
+
+# ── 回测参数 ──
+BT_HKD_CNY_RATE = 0.88              # 回测固定汇率（不调 API）
+BT_DEFAULT_LOT_SIZE = 100            # 港股默认每手股数
+BT_SLIPPAGE_PCT = 0.05               # 0.05% 单边滑点
+BT_SURVIVORSHIP_DISCOUNT = 0.7       # 生存者偏差折扣（30%）
+BT_COOLDOWN_DAYS = 10                # 止损后冷却交易日数
+BT_MAX_CONSECUTIVE_LOSSES = 4        # 连亏熔断触发
+BT_CIRCUIT_BREAKER_DAYS = 5          # 熔断暂停交易日数
+BT_DAILY_LOSS_LIMIT_PCT = 0.03       # 单日亏损上限 3%
+BT_MAX_PER_SECTOR = 2                # 每板块最多 2 只
+BT_MAX_NEW_POS_PER_WEEK = 2          # 每周最多新开 2 只
+BT_MIN_OPEN_AMOUNT_CNY = 5000        # 最低开仓金额
 
 # ── 调度配置 ──
 DAILY_ANALYSIS_TIME = (16, 30)      # 完整分析 + 交易（收盘后30分钟）

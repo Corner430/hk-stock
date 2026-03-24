@@ -8,12 +8,11 @@ import logging
 from datetime import datetime
 
 from hkstock.core import config
+from hkstock.core.config import DATA_DIR
 from hkstock.strategy import analyzer
 
 WECOM_TARGET = config.WECOM_TARGET
 SERVER_IP    = config.SERVER_IP
-
-_project_root = os.path.join(os.path.dirname(__file__), "..", "..", "..")
 
 
 def generate_report(data: dict, portfolio=None) -> str:
@@ -227,8 +226,8 @@ def daily_run():
     print("\n" + report)
 
     # 保存
-    os.makedirs(os.path.join(_project_root, "data"), exist_ok=True)
-    report_path = os.path.join(_project_root, "data", f"report_{datetime.now().strftime('%Y%m%d')}.txt")
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    report_path = str(DATA_DIR / f"report_{datetime.now().strftime('%Y%m%d')}.txt")
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(report)
     print(f"\n[报告] 已保存 {report_path}")

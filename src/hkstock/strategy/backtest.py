@@ -38,26 +38,18 @@ from hkstock.trading.position_manager import calc_trade_fee_hkd
 from hkstock.analysis.sector import get_sector
 from hkstock.core import config
 
-# ── 常量 ────────────────────────────────────────────────────
-HKD_CNY_RATE = 0.88             # 回测固定汇率（不调 API）
-DEFAULT_LOT_SIZE = 100           # 港股默认每手股数
-SLIPPAGE_PCT = 0.05              # 0.05% 单边滑点
-
-# 生存者偏差折扣
-SURVIVORSHIP_BIAS_DISCOUNT = 0.7  # 30% 折扣
-
-# Phase B: 冷却 & 熔断
-COOLDOWN_DAYS = 10               # 止损后冷却交易日数
-MAX_CONSECUTIVE_LOSSES = 4       # 连亏熔断触发
-CIRCUIT_BREAKER_DAYS = 5         # 熔断暂停交易日数
-DAILY_LOSS_LIMIT_PCT = 0.03      # 单日亏损上限 3%
-
-# Phase B: 板块集中度
-MAX_PER_SECTOR = 2               # 每板块最多 2 只
-
-# Phase D: 交易频率控制
-MAX_NEW_POSITIONS_PER_WEEK = 2   # 每周最多新开2只（分批续建不算）
-MIN_OPEN_AMOUNT_CNY = 5000       # 最低开仓金额（费用覆盖门槛）
+# ── 常量（从 config 导入）────────────────────────────────────
+HKD_CNY_RATE = config.BT_HKD_CNY_RATE
+DEFAULT_LOT_SIZE = config.BT_DEFAULT_LOT_SIZE
+SLIPPAGE_PCT = config.BT_SLIPPAGE_PCT
+SURVIVORSHIP_BIAS_DISCOUNT = config.BT_SURVIVORSHIP_DISCOUNT
+COOLDOWN_DAYS = config.BT_COOLDOWN_DAYS
+MAX_CONSECUTIVE_LOSSES = config.BT_MAX_CONSECUTIVE_LOSSES
+CIRCUIT_BREAKER_DAYS = config.BT_CIRCUIT_BREAKER_DAYS
+DAILY_LOSS_LIMIT_PCT = config.BT_DAILY_LOSS_LIMIT_PCT
+MAX_PER_SECTOR = config.BT_MAX_PER_SECTOR
+MAX_NEW_POSITIONS_PER_WEEK = config.BT_MAX_NEW_POS_PER_WEEK
+MIN_OPEN_AMOUNT_CNY = config.BT_MIN_OPEN_AMOUNT_CNY
 
 
 # ── 市场状态计算 ──────────────────────────────────────────────

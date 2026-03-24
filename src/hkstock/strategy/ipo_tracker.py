@@ -10,9 +10,10 @@ import os
 import time
 import logging
 from datetime import datetime, timedelta
+from hkstock.core.config import DATA_DIR
 from hkstock.data.real_data import fetch_realtime, HEADERS
 
-IPO_WATCH_FILE = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "ipo_watchlist.json")
+IPO_WATCH_FILE = str(DATA_DIR / "ipo_watchlist.json")
 IPO_MAX_AGE_DAYS = 90   # 追踪上市后 90 天内的新股
 
 

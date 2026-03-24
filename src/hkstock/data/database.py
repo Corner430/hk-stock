@@ -12,13 +12,14 @@ import os
 import logging
 from contextlib import contextmanager
 from datetime import datetime
+from hkstock.core.config import DATA_DIR
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "hkstock.db")
+DB_PATH = str(DATA_DIR / "hkstock.db")
 
 @contextmanager
 def get_conn():
     """获取数据库连接（上下文管理器，自动关闭）"""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row   # 让结果可以用列名访问
     conn.execute("PRAGMA journal_mode=WAL")  # 写多读多更安全

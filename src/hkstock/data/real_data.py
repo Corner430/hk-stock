@@ -2,6 +2,8 @@
 真实港股数据抓取 - 使用腾讯股票接口（无需API Key，完全免费）
 实时行情 + 历史K线，均可用
 """
+from __future__ import annotations
+
 import requests
 import pandas as pd
 import json
@@ -14,14 +16,14 @@ HEADERS = {
     "Referer": "https://gu.qq.com/",
 }
 
-def ticker_to_tencent(ticker):
+def ticker_to_tencent(ticker: str) -> str:
     """0700.HK → hk00700, HSI.HI → hkHSI"""
     if ticker.upper() in ("HSI.HI", "HSI"):
         return "hkHSI"
     code = ticker.replace(".HK", "").replace(".hk", "").zfill(5)
     return f"hk{code}"
 
-def fetch_realtime(tickers):
+def fetch_realtime(tickers: list[str]) -> dict[str, dict]:
     """
     批量获取实时行情
     返回 {ticker: {name, price, change, change_pct, volume, ...}}
@@ -71,7 +73,7 @@ def fetch_realtime(tickers):
         logging.error(f"[real_data] 实时行情获取失败: {e}")
         return {}
 
-def fetch_history(ticker, days=90):
+def fetch_history(ticker: str, days: int = 90) -> pd.DataFrame | None:
     """
     获取历史日K线数据，返回 DataFrame
     列：Date(index), Open, Close, High, Low, Volume, ChangePercent

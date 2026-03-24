@@ -1,6 +1,8 @@
 """
 港股数据抓取与技术分析模块（使用腾讯股票接口，真实数据）
 """
+from __future__ import annotations
+
 import pandas as pd
 from datetime import datetime
 import json
@@ -14,11 +16,11 @@ from hkstock.trading.position_manager import get_hkd_to_cny as _get_rate
 # 股票名称缓存（由动态筛选填充）
 NAME_CACHE = {}
 
-def fetch_stock_data(ticker, days=90):
+def fetch_stock_data(ticker: str, days: int = 90) -> pd.DataFrame | None:
     """抓取单只股票历史数据（腾讯真实数据源）"""
     return fetch_history(ticker, days=days)
 
-def analyze_stock(ticker, config):
+def analyze_stock(ticker: str, config) -> dict | None:
     """综合分析单只股票，返回信号"""
     df = fetch_stock_data(ticker)
     if df is None or len(df) < 15:
@@ -246,7 +248,7 @@ def analyze_stock(ticker, config):
 
     return latest
 
-def run_analysis(config, use_dynamic=True):
+def run_analysis(config, use_dynamic: bool = True) -> dict:
     """对股票进行分析：严格使用动态筛选，不使用预设列表"""
 
     from hkstock.strategy.screener import get_dynamic_watchlist

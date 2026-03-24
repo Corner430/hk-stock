@@ -6,6 +6,8 @@
 - 每日记录净值快照
 - 盘中持仓检查（独立于完整分析）
 """
+from __future__ import annotations
+
 import logging
 from datetime import datetime
 from hkstock.core import config
@@ -19,7 +21,7 @@ from hkstock.data.real_data import fetch_realtime
 
 # ── 交易执行 ──────────────────────────────────────────────
 
-def buy(portfolio, ticker, name, price, shares, reason, date) -> tuple[bool, str]:
+def buy(portfolio: dict, ticker: str, name: str, price: float, shares: int, reason: str, date: str) -> tuple[bool, str]:
     cost_hkd = price * shares
     fee_hkd = calc_trade_fee_hkd(cost_hkd)
     rate = get_hkd_to_cny()
@@ -53,8 +55,8 @@ def buy(portfolio, ticker, name, price, shares, reason, date) -> tuple[bool, str
     return True, f"买入 {name}（{ticker}）{shares}股 @{price}HKD  花费¥{total_cost:.0f}"
 
 
-def sell(portfolio, ticker, name, price, shares, reason, date,
-         lot_size: int = None) -> tuple[bool, str]:
+def sell(portfolio: dict, ticker: str, name: str, price: float, shares: int, reason: str, date: str,
+         lot_size: int | None = None) -> tuple[bool, str]:
     if ticker not in portfolio["positions"]:
         return False, f"{name} 无持仓"
     pos = portfolio["positions"][ticker]
@@ -430,7 +432,7 @@ def _check_drawdown(portfolio: dict, logs: list) -> bool:
     return False
 
 
-def _snapshot(portfolio: dict, today: str):
+def _snapshot(portfolio: dict, today: str) -> None:
     """记录每日净值"""
     positions = portfolio.get("positions", {})
     pos_value = 0.0

@@ -1,6 +1,8 @@
 """
 仓位管理 + 持仓跟踪 + 止损止盈检测 + 交易费用计算 + 汇率
 """
+from __future__ import annotations
+
 import json
 try:
     import fcntl
@@ -80,7 +82,7 @@ def load_portfolio() -> dict:
     }
 
 
-def save_portfolio(portfolio: dict):
+def save_portfolio(portfolio: dict) -> None:
     import tempfile
     dir_path = os.path.dirname(PORTFOLIO_FILE)
     os.makedirs(dir_path, exist_ok=True)
@@ -100,7 +102,7 @@ def save_portfolio(portfolio: dict):
 
 # ── 仓位限制检查 ──────────────────────────────────────────
 
-def check_position_limits(portfolio) -> tuple[bool, str]:
+def check_position_limits(portfolio: dict) -> tuple[bool, str]:
     positions = portfolio.get("positions", {})
     n = len(positions)
 
@@ -121,7 +123,7 @@ def check_position_limits(portfolio) -> tuple[bool, str]:
 
 # ── 止损止盈检测 ──────────────────────────────────────────
 
-def check_stop_loss_take_profit(portfolio) -> list[dict]:
+def check_stop_loss_take_profit(portfolio: dict) -> list[dict]:
     positions = portfolio.get("positions", {})
     if not positions:
         return []
@@ -226,7 +228,7 @@ def check_stop_loss_take_profit(portfolio) -> list[dict]:
 
 # ── 持仓摘要 ──────────────────────────────────────────────
 
-def get_positions_summary(portfolio) -> str:
+def get_positions_summary(portfolio: dict) -> str:
     positions = portfolio.get("positions", {})
     if not positions:
         return "当前空仓"
@@ -265,7 +267,7 @@ def get_positions_summary(portfolio) -> str:
 
 # ── 工具函数 ──────────────────────────────────────────────
 
-def calc_hold_days(portfolio, ticker) -> int:
+def calc_hold_days(portfolio: dict, ticker: str) -> int:
     for t in reversed(portfolio.get("trades", [])):
         if t.get("ticker") == ticker and t.get("action") == "BUY":
             try:

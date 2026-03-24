@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 
 
-def calc_rsi(series, period=14):
+def calc_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     """
     计算 RSI 指标（Wilder 平滑法）
     与 TradingView 和通达信的计算方式一致
@@ -22,7 +22,7 @@ def calc_rsi(series, period=14):
     return rsi
 
 
-def calc_macd(series, fast=12, slow=26, signal=9):
+def calc_macd(series: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> tuple[pd.Series, pd.Series, pd.Series]:
     """计算 MACD 指标"""
     ema_fast = series.ewm(span=fast, adjust=False).mean()
     ema_slow = series.ewm(span=slow, adjust=False).mean()
@@ -32,7 +32,7 @@ def calc_macd(series, fast=12, slow=26, signal=9):
     return macd, signal_line, histogram
 
 
-def calc_bollinger(series, period=20, std=2):
+def calc_bollinger(series: pd.Series, period: int = 20, std: int = 2) -> tuple[pd.Series, pd.Series, pd.Series]:
     """计算布林带"""
     ma = series.rolling(window=period).mean()
     std_dev = series.rolling(window=period).std()
@@ -41,7 +41,7 @@ def calc_bollinger(series, period=20, std=2):
     return upper, ma, lower
 
 
-def calc_adx(high, low, close, period=14):
+def calc_adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> tuple[pd.Series, pd.Series, pd.Series]:
     """
     计算 ADX（平均趋向指标）- Wilder 平滑法
     衡量趋势强度，与主流工具一致
@@ -66,7 +66,7 @@ def calc_adx(high, low, close, period=14):
     return adx, plus_di, minus_di
 
 
-def calc_atr(high, low, close, period=14):
+def calc_atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
     """
     计算 ATR（平均真实范围）- Wilder 平滑法
     用于波动率自适应仓位管理和止损距离计算
@@ -80,7 +80,7 @@ def calc_atr(high, low, close, period=14):
     return atr
 
 
-def calc_momentum(close, benchmark_close=None, period=20):
+def calc_momentum(close: pd.Series, benchmark_close: pd.Series | None = None, period: int = 20) -> pd.Series:
     """
     计算动量因子（相对强度）
     如果提供 benchmark_close（如恒生指数），则计算相对动量；
@@ -98,7 +98,7 @@ def calc_momentum(close, benchmark_close=None, period=20):
         return close.pct_change(period) * 100
 
 
-def resample_to_weekly(df):
+def resample_to_weekly(df: pd.DataFrame) -> pd.DataFrame:
     """
     将日线数据重采样为周线数据。
     输入 DataFrame 需要包含: Open, High, Low, Close, Volume 列，

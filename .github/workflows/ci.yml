@@ -26,15 +26,16 @@ jobs:
         run: uv sync --dev
 
       - name: Check imports
-        run: uv run python -c "
-          from hkstock.core import config
-          from hkstock.data import real_data, database, market_data
-          from hkstock.analysis import indicators, fundamentals, ai_analyzer
-          from hkstock.analysis.sector import get_sector
-          from hkstock.strategy import analyzer, screener, ipo_tracker
-          from hkstock.strategy.backtest import main as _bt_main
-          from hkstock.trading import auto_trader, position_manager
-          from hkstock.app import daily_report, dashboard, cron
+        run: |
+          uv run python -c "
+          from hkstock.core import config;
+          from hkstock.data import real_data, database, market_data;
+          from hkstock.analysis import indicators, fundamentals, ai_analyzer;
+          from hkstock.analysis.sector import get_sector;
+          from hkstock.strategy import analyzer, screener, ipo_tracker;
+          from hkstock.strategy.backtest import main as _bt_main;
+          from hkstock.trading import auto_trader, position_manager;
+          from hkstock.app import daily_report, dashboard, cron;
           print('All modules imported successfully')
           "
 

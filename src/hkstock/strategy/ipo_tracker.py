@@ -5,29 +5,21 @@ P1-A：IPO / 新股追踪模块
 """
 import requests
 import re
-import json
-import os
 import time
 import logging
 from datetime import datetime, timedelta
-from hkstock.core.config import DATA_DIR
+from hkstock.core.io import read_json, write_json
 from hkstock.data.real_data import fetch_realtime, HEADERS
 
-IPO_WATCH_FILE = str(DATA_DIR / "ipo_watchlist.json")
 IPO_MAX_AGE_DAYS = 90   # 追踪上市后 90 天内的新股
 
 
 def load_ipo_watchlist() -> list[dict]:
-    if os.path.exists(IPO_WATCH_FILE):
-        with open(IPO_WATCH_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return []
+    return read_json("ipo_watchlist.json", default=[])
 
 
 def save_ipo_watchlist(watchlist: list[dict]):
-    os.makedirs(os.path.dirname(IPO_WATCH_FILE), exist_ok=True)
-    with open(IPO_WATCH_FILE, "w", encoding="utf-8") as f:
-        json.dump(watchlist, f, ensure_ascii=False, indent=2)
+    write_json("ipo_watchlist.json", watchlist)
 
 
 def detect_new_listings(scan_days: int = 120) -> list[dict]:

@@ -2,8 +2,9 @@
 Flask Web 看板服务（含净值曲线图表）
 """
 from flask import Flask, jsonify, request
-import json, os, subprocess, sys, threading, time as _time
+import os, subprocess, sys, threading, time as _time
 from hkstock.core.config import PROJECT_ROOT, DATA_DIR, TEMPLATE_DIR
+from hkstock.core.io import read_json
 
 app = Flask(__name__)
 
@@ -27,19 +28,17 @@ def index():
 
 @app.route("/api/data")
 def api_data():
-    f = str(DATA_DIR / "latest.json")
-    if not os.path.exists(f):
+    data = read_json("latest.json")
+    if data is None:
         return jsonify({"error": "no data", "stocks": [], "summary": {}}), 200
-    with open(f, encoding="utf-8") as fp:
-        return jsonify(json.load(fp))
+    return jsonify(data)
 
 @app.route("/api/portfolio")
 def api_portfolio():
-    f = str(DATA_DIR / "portfolio.json")
-    if not os.path.exists(f):
+    data = read_json("portfolio.json")
+    if data is None:
         return jsonify({"error": "no portfolio"}), 200
-    with open(f, encoding="utf-8") as fp:
-        return jsonify(json.load(fp))
+    return jsonify(data)
 
 _refresh_lock = threading.Lock()
 _refresh_status = {"status": "idle", "started_at": None, "finished_at": None}

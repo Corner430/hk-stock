@@ -6,6 +6,8 @@
   portfolio_snapshots — 每日资产快照
   backtest_runs  — 回测运行记录（方便对比不同策略）
 """
+from __future__ import annotations
+
 import sqlite3
 import json
 import os
@@ -28,7 +30,7 @@ def get_conn():
     finally:
         conn.close()
 
-def init_db():
+def init_db() -> None:
     """建表（幂等，已存在不报错）"""
     with get_conn() as conn:
         c = conn.cursor()
@@ -119,7 +121,7 @@ def init_db():
 # 写入函数
 # ─────────────────────────────────────────────
 
-def save_stocks_daily(records: list[dict]):
+def save_stocks_daily(records: list[dict]) -> None:
     """批量保存每日分析结果（来自 analyzer.py 的 stocks 列表）"""
     with get_conn() as conn:
         c = conn.cursor()
@@ -147,7 +149,7 @@ def save_stocks_daily(records: list[dict]):
             ))
         conn.commit()
 
-def save_trade(run_id: str, trade: dict):
+def save_trade(run_id: str, trade: dict) -> None:
     """保存一笔交易"""
     with get_conn() as conn:
         conn.execute("""
@@ -163,7 +165,7 @@ def save_trade(run_id: str, trade: dict):
         ))
         conn.commit()
 
-def save_snapshot(run_id: str, snap: dict, positions_detail: dict = None):
+def save_snapshot(run_id: str, snap: dict, positions_detail: dict | None = None) -> None:
     """保存每日资产快照"""
     with get_conn() as conn:
         conn.execute("""
@@ -184,7 +186,7 @@ def save_snapshot(run_id: str, snap: dict, positions_detail: dict = None):
         ))
         conn.commit()
 
-def save_backtest_run(run_id: str, meta: dict):
+def save_backtest_run(run_id: str, meta: dict) -> None:
     """保存回测汇总"""
     with get_conn() as conn:
         conn.execute("""
@@ -208,13 +210,13 @@ def save_backtest_run(run_id: str, meta: dict):
 # 查询函数
 # ─────────────────────────────────────────────
 
-def query(sql, params=()):
+def query(sql: str, params: tuple = ()) -> list[dict]:
     """通用查询，返回 list[dict]"""
     with get_conn() as conn:
         rows = conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
 
-def get_latest_signals(date=None):
+def get_latest_signals(date: str | None = None) -> list[dict]:
     """获取最新一天的信号（默认最新日期）"""
     if date:
         return query("SELECT * FROM stocks_daily WHERE date=? ORDER BY score DESC", (date,))
@@ -223,7 +225,7 @@ def get_latest_signals(date=None):
         ORDER BY score DESC
     """)
 
-def get_trade_history(run_id=None, ticker=None, limit=50):
+def get_trade_history(run_id: str | None = None, ticker: str | None = None, limit: int = 50) -> list[dict]:
     """查交易记录"""
     if run_id and ticker:
         return query("SELECT * FROM trades WHERE run_id=? AND ticker=? ORDER BY date DESC LIMIT ?",
@@ -232,15 +234,15 @@ def get_trade_history(run_id=None, ticker=None, limit=50):
         return query("SELECT * FROM trades WHERE run_id=? ORDER BY date DESC LIMIT ?", (run_id, limit))
     return query("SELECT * FROM trades ORDER BY date DESC LIMIT ?", (limit,))
 
-def get_snapshots(run_id):
+def get_snapshots(run_id: str) -> list[dict]:
     """获取某次回测的净值曲线"""
     return query("SELECT * FROM portfolio_snapshots WHERE run_id=? ORDER BY date", (run_id,))
 
-def get_all_runs():
+def get_all_runs() -> list[dict]:
     """列出所有回测记录"""
     return query("SELECT * FROM backtest_runs ORDER BY created_at DESC")
 
-def get_stock_history(ticker, days=30):
+def get_stock_history(ticker: str, days: int = 30) -> list[dict]:
     """查某只股票的历史评分变化"""
     return query("""
         SELECT date, price, change_pct, rsi, score, action, signals
@@ -248,7 +250,7 @@ def get_stock_history(ticker, days=30):
         ORDER BY date DESC LIMIT ?
     """, (ticker, days))
 
-def get_stats_summary():
+def get_stats_summary() -> dict:
     """统计摘要：胜率、平均盈亏等"""
     sells = query("SELECT pnl_cny, pnl_pct FROM trades WHERE action='SELL' AND pnl_cny IS NOT NULL")
     if not sells:

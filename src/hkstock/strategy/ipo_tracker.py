@@ -10,9 +10,9 @@ import os
 import time
 import logging
 from datetime import datetime, timedelta
-from real_data import fetch_realtime, HEADERS
+from hkstock.data.real_data import fetch_realtime, HEADERS
 
-IPO_WATCH_FILE = os.path.join(os.path.dirname(__file__), "data", "ipo_watchlist.json")
+IPO_WATCH_FILE = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "ipo_watchlist.json")
 IPO_MAX_AGE_DAYS = 90   # 追踪上市后 90 天内的新股
 
 
@@ -36,7 +36,7 @@ def detect_new_listings(scan_days: int = 120) -> list[dict]:
     2. 只考虑 30~89 天的（太新的技术指标不可用，太老的不算新股）
     返回新股列表
     """
-    from real_data import fetch_history
+    from hkstock.data.real_data import fetch_history
 
     # 全主板扫描（覆盖 0001-2999, 6000-9999）
     # 0100.HK(MiniMax)、2513.HK(智谱) 等都能覆盖到

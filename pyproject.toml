@@ -1,16 +1,16 @@
 [project]
 name = "hk-stock"
-version = "0.1.0"
+version = "0.2.0"
 description = "港股量化分析与模拟交易系统"
 readme = "README.md"
 license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 keywords = ["hong-kong", "stock", "quantitative", "trading", "analysis"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Financial and Insurance Industry",
-    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -31,3 +31,18 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
 ]
+
+[project.scripts]
+hkstock-daily = "hkstock.app.daily_report:daily_run"
+hkstock-cron = "hkstock.app.cron:main"
+hkstock-dashboard = "hkstock.app.dashboard:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

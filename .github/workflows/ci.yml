@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  check:
+  test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -23,26 +23,20 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --dev
 
       - name: Check imports
         run: uv run python -c "
-          import config
-          import database
-          import indicators
-          import real_data
-          import analyzer
-          import auto_trader
-          import backtest
-          import daily_report
-          import dashboard
-          import fundamentals
-          import hkstock_cron
-          import ipo_tracker
-          import market_data
-          import position_manager
-          import sector_analyzer
-          import stock_screener
-          import ai_analyzer
-          print('All 17 modules imported successfully')
+          from hkstock.core import config
+          from hkstock.data import real_data, database, market_data
+          from hkstock.analysis import indicators, fundamentals, ai_analyzer
+          from hkstock.analysis.sector import get_sector
+          from hkstock.strategy import analyzer, screener, ipo_tracker
+          from hkstock.strategy.backtest import main as _bt_main
+          from hkstock.trading import auto_trader, position_manager
+          from hkstock.app import daily_report, dashboard, cron
+          print('All modules imported successfully')
           "
+
+      - name: Run tests
+        run: uv run pytest tests/ -v --tb=short

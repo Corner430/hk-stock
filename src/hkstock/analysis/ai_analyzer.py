@@ -18,7 +18,7 @@ from codebuddy_agent_sdk import query, CodeBuddyAgentOptions, AssistantMessage, 
 # ── 配置 ──────────────────────────────────────────────
 # API Key（从 .env 或环境变量读取，不在代码中硬编码）
 # 请在项目根目录 .env 文件中设置 CODEBUDDY_API_KEY=your_key
-import config  # 触发 .env 加载
+from hkstock.core import config  # 触发 .env 加载
 CODEBUDDY_API_KEY = os.environ.get("CODEBUDDY_API_KEY", "")
 
 # 集成学习模型池（权重越高影响力越大）

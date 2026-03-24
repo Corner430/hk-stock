@@ -13,7 +13,7 @@ import logging
 from contextlib import contextmanager
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "data", "hkstock.db")
+DB_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "hkstock.db")
 
 @contextmanager
 def get_conn():

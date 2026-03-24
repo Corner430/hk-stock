@@ -12,10 +12,10 @@ import time
 import logging
 from datetime import datetime
 import requests
-import config
-from real_data import fetch_realtime
+from hkstock.core import config
+from hkstock.data.real_data import fetch_realtime
 
-PORTFOLIO_FILE = os.path.join(os.path.dirname(__file__), "data", "portfolio.json")
+PORTFOLIO_FILE = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "portfolio.json")
 
 # ── 汇率 ──────────────────────────────────────────────────
 

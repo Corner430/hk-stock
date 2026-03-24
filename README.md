@@ -20,9 +20,9 @@ uv sync
 cp .env.example .env   # 编辑 .env 填入 CODEBUDDY_API_KEY、SERVER_IP 等
 
 # 运行
-uv run python daily_report.py     # 手动执行一次完整分析+交易
-uv run python hkstock_cron.py     # 启动定时调度（后台常驻）
-uv run python dashboard.py        # 启动 Web 看板（:8888）
+uv run hkstock-daily               # 手动执行一次完整分析+交易
+uv run hkstock-cron                # 启动定时调度（后台常驻）
+uv run hkstock-dashboard            # 启动 Web 看板（:8888）
 ```
 
 > `.env` 已在 `.gitignore` 中，不会被提交。AI 分析需要 `CODEBUDDY_API_KEY`，未配置时自动跳过。
@@ -30,7 +30,7 @@ uv run python dashboard.py        # 启动 Web 看板（:8888）
 ## 系统架构
 
 ```
-全市场扫描 (stock_screener)        IPO 新股 (ipo_tracker)
+全市场扫描 (screener)              IPO 新股 (ipo_tracker)
         \                               /
          --------> 合并标的池 -------->
                        |
@@ -39,14 +39,14 @@ uv run python dashboard.py        # 启动 Web 看板（:8888）
               + 量价背离检测
               + 恒生指数趋势检测（牛/熊/中性）
                        |
-              市场数据 (market_data)         <-- 新增
+              市场数据 (market_data)
               南向资金 / AH溢价 / VHSI / 卖空 / 美股隔夜 / MSCI
               → 仓位倍数 0.3x ~ 1.2x
                        |
               基本面过滤 (fundamentals)
               PE(行业相对) / PB / ROE / PEG / FCF / 港交所公告 / 新闻舆情
                        |
-              板块热度加分/减分 (sector_analyzer)
+              板块热度加分/减分 (sector)
               热门 +1~+3 / 冷门 -1~-2
                        |
               AI 集成分析 (ai_analyzer)
@@ -183,7 +183,7 @@ HKD/CNY 汇率从 open.er-api.com 实时获取，4 小时缓存。
 
 ### 调度
 
-每个交易日自动运行，跳过周末和港股假期（`config.py` 中 `HK_HOLIDAYS`）：
+每个交易日自动运行，跳过周末和港股假期（`src/hkstock/core/config.py` 中 `HK_HOLIDAYS`）：
 
 | 时间 | 动作 |
 |------|------|
@@ -193,16 +193,16 @@ HKD/CNY 汇率从 open.er-api.com 实时获取，4 小时缓存。
 ### 回测
 
 ```bash
-uv run python backtest.py              # 完整回测（默认）
-uv run python backtest.py weekly       # 最近一周
-uv run python backtest.py multiwindow  # 多区间（防过拟合）
+uv run python -m hkstock.strategy.backtest              # 完整回测（默认）
+uv run python -m hkstock.strategy.backtest weekly       # 最近一周
+uv run python -m hkstock.strategy.backtest multiwindow  # 多区间（防过拟合）
 ```
 
 回测引擎与实盘策略对齐（含动量/量价背离信号），输出 Sharpe Ratio、Calmar Ratio、最大回撤、年化收益/波动率等风险指标，包含滑点模拟（单边 0.05%）。回测结果标注生存者偏差警告。
 
 ### 配置参数
 
-`config.py` 中可调整的核心参数：
+`src/hkstock/core/config.py` 中可调整的核心参数：
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
@@ -239,8 +239,8 @@ pip install supervisor
 
 | 进程 | 命令 | 说明 |
 |------|------|------|
-| `hkstock-dashboard` | `uv run python dashboard.py` | Web 看板，端口 8888 |
-| `hkstock-cron` | `uv run python hkstock_cron.py` | 定时调度守护进程 |
+| `hkstock-dashboard` | `uv run hkstock-dashboard` | Web 看板，端口 8888 |
+| `hkstock-cron` | `uv run hkstock-cron` | 定时调度守护进程 |
 
 ```bash
 ./manage.sh status       # 查看状态
@@ -255,33 +255,42 @@ pip install supervisor
 
 ```
 hk-stock/
-  pyproject.toml            项目配置 + 依赖声明（uv 管理）
-  uv.lock                   依赖锁文件
-  config.py                 全局配置 + .env 加载 + 港股假期日历
-  stock_screener.py         全市场扫描，成交额+波动率筛选 Top 100
-  ipo_tracker.py            IPO 新股检测，上市满 15 天注入分析
-  analyzer.py               技术分析主引擎 + 大盘趋势 + 市场数据集成
-  indicators.py             指标计算：RSI / MACD / BB / ADX / ATR / 动量
-  market_data.py            市场级数据：南向资金/AH溢价/VHSI/卖空/MSCI
-  fundamentals.py           基本面过滤(PE/PEG/FCF) + 港交所公告 + 新闻舆情
-  sector_analyzer.py        板块分类(15板块 200+关键词) + 热度/冷门检测
-  ai_analyzer.py            5 模型集成分析，异步并行 + 快速路径
-  auto_trader.py            交易引擎：分批建仓/回撤保护/碎股处理/净值快照
-  position_manager.py       仓位管理：持仓/三级止损止盈/分批止盈/费用/汇率
-  daily_report.py           每日报告生成
-  hkstock_cron.py           定时调度守护进程
-  dashboard.py              Flask Web 看板（需认证）
-  database.py               SQLite 持久化
-  real_data.py              腾讯 API 接口（行情/K线/手数）
-  backtest.py               回测引擎（Sharpe/Calmar/滑点/偏差警告）
-  manage.sh                 Supervisor 管理脚本
-  templates/index.html      看板前端
-  data/                     运行时数据（git 忽略）
-    portfolio.json           模拟持仓
-    latest.json              最新分析结果
-    hkstock.db               SQLite 数据库
-    ipo_watchlist.json       IPO 观察池
-    report_*.txt             历史报告
+  pyproject.toml                项目配置 + 依赖声明（uv 管理）
+  uv.lock                       依赖锁文件
+  manage.sh                     Supervisor 管理脚本
+  templates/index.html          看板前端
+  src/hkstock/                  主包
+    __init__.py                 版本号
+    core/
+      config.py                 全局配置 + .env 加载 + 港股假期日历
+    data/
+      database.py               SQLite 持久化
+      market_data.py            市场级数据：南向资金/AH溢价/VHSI/卖空/MSCI
+      real_data.py              腾讯 API 接口（行情/K线/手数）
+    analysis/
+      indicators.py             指标计算：RSI / MACD / BB / ADX / ATR / 动量
+      fundamentals.py           基本面过滤(PE/PEG/FCF) + 港交所公告 + 新闻舆情
+      sector.py                 板块分类(15板块 200+关键词) + 热度/冷门检测
+      ai_analyzer.py            5 模型集成分析，异步并行 + 快速路径
+    strategy/
+      analyzer.py               技术分析主引擎 + 大盘趋势 + 市场数据集成
+      screener.py               全市场扫描，成交额+波动率筛选 Top 100
+      ipo_tracker.py            IPO 新股检测，上市满 15 天注入分析
+      backtest.py               回测引擎（Sharpe/Calmar/滑点/偏差警告）
+    trading/
+      auto_trader.py            交易引擎：分批建仓/回撤保护/碎股处理/净值快照
+      position_manager.py       仓位管理：持仓/三级止损止盈/分批止盈/费用/汇率
+    app/
+      daily_report.py           每日报告生成
+      cron.py                   定时调度守护进程
+      dashboard.py              Flask Web 看板（需认证）
+  tests/                        测试
+  data/                         运行时数据（git 忽略）
+    portfolio.json               模拟持仓
+    latest.json                  最新分析结果
+    hkstock.db                   SQLite 数据库
+    ipo_watchlist.json           IPO 观察池
+    report_*.txt                 历史报告
 ```
 
 ## 注意事项
@@ -289,7 +298,7 @@ hk-stock/
 - 本系统为**模拟交易**，不连接真实券商，不产生实际交易
 - 数据来自腾讯免费行情 API，存在 15 分钟左右延迟
 - 市场数据（南向资金等）来自东方财富 API，网络异常时自动降级
-- 港股假期日历需每年手动更新（`config.py` 中 `HK_HOLIDAYS`）
+- 港股假期日历需每年手动更新（`src/hkstock/core/config.py` 中 `HK_HOLIDAYS`）
 - 回测结果存在生存者偏差，实际表现可能不如回测
 - 投资有风险，系统评分仅供参考，不构成投资建议
 

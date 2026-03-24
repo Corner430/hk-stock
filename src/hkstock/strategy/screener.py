@@ -12,7 +12,7 @@ import json
 import logging
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from real_data import fetch_history, HEADERS
+from hkstock.data.real_data import fetch_history, HEADERS
 
 HSI_API = "https://www.hsi.com.hk/data/eng/rt/index-series/hsi/constituents.do"
 

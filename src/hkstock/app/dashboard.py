@@ -4,6 +4,8 @@ Flask Web 看板服务（含净值曲线图表）
 from flask import Flask, jsonify, request
 import json, os, subprocess, sys, threading, time as _time
 
+_PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+
 app = Flask(__name__)
 
 # ── HTTP Basic Auth（在 .env 中配置 DASHBOARD_USER / DASHBOARD_PASS 开启）──
@@ -18,7 +20,7 @@ def check_auth():
     if not auth or auth.username != DASHBOARD_USER or auth.password != DASHBOARD_PASS:
         return ("Unauthorized", 401, {"WWW-Authenticate": 'Basic realm="HK-Stock Dashboard"'})
 
-TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
+TEMPLATE_DIR = os.path.join(_PROJECT_ROOT, "templates")
 
 @app.route("/")
 def index():
@@ -28,7 +30,7 @@ def index():
 
 @app.route("/api/data")
 def api_data():
-    f = os.path.join(os.path.dirname(__file__), "data", "latest.json")
+    f = os.path.join(_PROJECT_ROOT, "data", "latest.json")
     if not os.path.exists(f):
         return jsonify({"error": "no data", "stocks": [], "summary": {}}), 200
     with open(f, encoding="utf-8") as fp:
@@ -36,7 +38,7 @@ def api_data():
 
 @app.route("/api/portfolio")
 def api_portfolio():
-    f = os.path.join(os.path.dirname(__file__), "data", "portfolio.json")
+    f = os.path.join(_PROJECT_ROOT, "data", "portfolio.json")
     if not os.path.exists(f):
         return jsonify({"error": "no portfolio"}), 200
     with open(f, encoding="utf-8") as fp:
@@ -54,8 +56,7 @@ def api_refresh():
     _refresh_status["finished_at"] = None
     def run():
         try:
-            script = os.path.join(os.path.dirname(__file__), "daily_report.py")
-            subprocess.run([sys.executable, script], cwd=os.path.dirname(__file__))
+            subprocess.run([sys.executable, "-m", "hkstock.app.daily_report"], cwd=_PROJECT_ROOT)
         finally:
             _refresh_status["status"] = "idle"
             _refresh_status["finished_at"] = _time.time()
@@ -75,7 +76,7 @@ def api_refresh_status():
             result["elapsed_seconds"] = round(_time.time() - started, 1)
     if finished:
         result["finished_at"] = finished
-    latest = os.path.join(os.path.dirname(__file__), "data", "latest.json")
+    latest = os.path.join(_PROJECT_ROOT, "data", "latest.json")
     if os.path.exists(latest):
         result["data_updated_at"] = os.path.getmtime(latest)
     return jsonify(result)
@@ -84,7 +85,7 @@ def api_refresh_status():
 def api_intraday_check():
     """盘中持仓检查（止损/止盈），供 hkstock_cron 定时调用"""
     try:
-        from auto_trader import run_intraday_check
+        from hkstock.trading.auto_trader import run_intraday_check
         logs = run_intraday_check()
         return jsonify({"status": "ok", "logs": logs})
     except Exception as e:
@@ -95,7 +96,7 @@ def api_intraday_check():
 def api_db_runs():
     """所有回测记录"""
     try:
-        from database import get_all_runs
+        from hkstock.data.database import get_all_runs
         return jsonify(get_all_runs())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -104,7 +105,7 @@ def api_db_runs():
 def api_db_trades():
     """交易记录，支持 ?run_id=xxx&ticker=xxx&limit=50"""
     try:
-        from database import get_trade_history
+        from hkstock.data.database import get_trade_history
         run_id = request.args.get("run_id")
         ticker = request.args.get("ticker")
         try:
@@ -119,7 +120,7 @@ def api_db_trades():
 def api_db_snapshots():
     """某次回测净值曲线，?run_id=xxx"""
     try:
-        from database import get_snapshots
+        from hkstock.data.database import get_snapshots
         run_id = request.args.get("run_id", "v2_20260225_20260305")
         return jsonify(get_snapshots(run_id))
     except Exception as e:
@@ -129,7 +130,7 @@ def api_db_snapshots():
 def api_db_stock():
     """某只股票历史评分，?ticker=2318.HK&days=30"""
     try:
-        from database import get_stock_history
+        from hkstock.data.database import get_stock_history
         ticker = request.args.get("ticker", "0700.HK")
         try:
             days = max(1, min(365, int(request.args.get("days", 30))))
@@ -143,7 +144,7 @@ def api_db_stock():
 def api_db_stats():
     """策略统计：胜率、平均盈亏"""
     try:
-        from database import get_stats_summary
+        from hkstock.data.database import get_stats_summary
         return jsonify(get_stats_summary())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -151,7 +152,10 @@ def api_db_stats():
 # /api/db/query 已移除（存在SQL注入风险）
 # 如需查询，请使用预定义的 /api/db/trades, /api/db/stats 等接口
 
-if __name__ == "__main__":
-    print("🚀 启动港股分析看板...")
-    print("📊 访问 http://localhost:8888 查看看板")
+def main():
+    print("启动港股分析看板...")
+    print("访问 http://localhost:8888 查看看板")
     app.run(host=os.environ.get("DASHBOARD_HOST", "127.0.0.1"), port=int(os.environ.get("DASHBOARD_PORT", 8888)), debug=False)
+
+if __name__ == "__main__":
+    main()

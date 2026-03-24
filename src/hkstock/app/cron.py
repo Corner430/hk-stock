@@ -10,7 +10,7 @@ import subprocess
 import sys
 import os
 from datetime import datetime
-import config
+from hkstock.core import config
 
 WORKDIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -35,10 +35,10 @@ def run_intraday_check():
         # 在子进程中执行，避免主进程模块状态污染
         result = subprocess.run(
             [sys.executable, "-c",
-             "from auto_trader import run_intraday_check; "
+             "from hkstock.trading.auto_trader import run_intraday_check; "
              "logs = run_intraday_check(); "
              "[print(l) for l in logs]"],
-            cwd=WORKDIR, capture_output=True, text=True, timeout=120
+            cwd=os.path.join(WORKDIR, "..", "..", ".."), capture_output=True, text=True, timeout=120
         )
         if result.returncode == 0:
             for line in result.stdout.strip().split("\n"):
@@ -58,8 +58,8 @@ def run_daily_analysis():
     log("开始每日完整分析...")
     try:
         result = subprocess.run(
-            [sys.executable, os.path.join(WORKDIR, "daily_report.py")],
-            cwd=WORKDIR, capture_output=True, text=True, timeout=600
+            [sys.executable, "-m", "hkstock.app.daily_report"],
+            cwd=os.path.join(WORKDIR, "..", "..", ".."), capture_output=True, text=True, timeout=600
         )
         if result.returncode == 0:
             log("每日分析完成")

@@ -149,7 +149,7 @@ def fundamental_filter(ticker: str, tc_code: str, fund: dict, sector: str = None
     # 规则4: 自由流通比例过低（如果数据可用）
     free_float = fund.get("free_float_pct")
     if free_float is not None:
-        import config as cfg
+        from hkstock.core import config as cfg
         if free_float < cfg.MIN_FREE_FLOAT_PCT:
             reasons.append(f"自由流通={free_float:.1f}% 过低（<{cfg.MIN_FREE_FLOAT_PCT}%），流动性风险")
             passed = False
@@ -486,7 +486,7 @@ def enrich_with_fundamentals(stock: dict) -> dict:
     # 2. 基本面过滤（不通过直接标记）
     # 获取板块信息用于成长股豁免
     try:
-        from sector_analyzer import get_sector
+        from hkstock.analysis.sector import get_sector
         sector = get_sector(stock["ticker"], stock.get("name", ""))
     except Exception:
         sector = None

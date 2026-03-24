@@ -7,12 +7,13 @@ import sys
 import logging
 from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(__file__))
-import config
-import analyzer
+from hkstock.core import config
+from hkstock.strategy import analyzer
 
 WECOM_TARGET = config.WECOM_TARGET
 SERVER_IP    = config.SERVER_IP
+
+_project_root = os.path.join(os.path.dirname(__file__), "..", "..", "..")
 
 
 def generate_report(data: dict, portfolio=None) -> str:
@@ -30,7 +31,7 @@ def generate_report(data: dict, portfolio=None) -> str:
                     and s.get("action") not in ["基本面排除"]]
 
     # ── 仓位状态 ─────────────────────────────────────────
-    from position_manager import (
+    from hkstock.trading.position_manager import (
         load_portfolio, check_position_limits,
         check_stop_loss_take_profit, get_positions_summary
     )
@@ -44,7 +45,7 @@ def generate_report(data: dict, portfolio=None) -> str:
     sector_report = ""
     hot_sectors   = []
     try:
-        from sector_analyzer import fetch_sector_performance, get_sector_report, get_hot_sectors
+        from hkstock.analysis.sector import fetch_sector_performance, get_sector_report, get_hot_sectors
         sector_perf = fetch_sector_performance()
         sector_report = get_sector_report(sector_perf)
         hot_sectors   = get_hot_sectors(sector_perf)
@@ -54,7 +55,7 @@ def generate_report(data: dict, portfolio=None) -> str:
     # ── 新股追踪 ─────────────────────────────────────────
     ipo_report = ""
     try:
-        from ipo_tracker import load_ipo_watchlist, get_ipo_report
+        from hkstock.strategy.ipo_tracker import load_ipo_watchlist, get_ipo_report
         ipo_wl     = load_ipo_watchlist()
         ipo_report = get_ipo_report(ipo_wl)
     except Exception as e:
@@ -64,7 +65,7 @@ def generate_report(data: dict, portfolio=None) -> str:
     mkt_emoji = "⚠️"
     mkt_line  = ""
     try:
-        from fundamentals import fetch_market_sentiment
+        from hkstock.analysis.fundamentals import fetch_market_sentiment
         mkt_score, mkt_summary = fetch_market_sentiment()
         if mkt_score >= 1:
             mkt_emoji = "✅"
@@ -115,7 +116,7 @@ def generate_report(data: dict, portfolio=None) -> str:
             # 板块加成标注
             sector = ""
             try:
-                from sector_analyzer import get_sector
+                from hkstock.analysis.sector import get_sector
                 sec = get_sector(s["ticker"])
                 if sec in hot_sectors:
                     sector = f" 🔥{sec}"
@@ -172,8 +173,8 @@ def generate_report(data: dict, portfolio=None) -> str:
 
     # 账户总结
     try:
-        from auto_trader import get_trade_summary
-        from position_manager import load_portfolio as _lp
+        from hkstock.trading.auto_trader import get_trade_summary
+        from hkstock.trading.position_manager import load_portfolio as _lp
         lines.append("\n" + get_trade_summary(_lp()))
     except Exception as e:
         logging.warning("获取交易摘要失败: %s", e)
@@ -199,7 +200,7 @@ def daily_run():
 
     # 同步更新新股观察池（后台静默）
     try:
-        from ipo_tracker import update_ipo_watchlist
+        from hkstock.strategy.ipo_tracker import update_ipo_watchlist
         wl = update_ipo_watchlist()
         print(f"[新股追踪] 观察池共 {len(wl)} 只新股")
     except Exception as e:
@@ -211,8 +212,8 @@ def daily_run():
     # 自动模拟交易
     trade_logs = []
     try:
-        from auto_trader import auto_trade, get_trade_summary
-        from position_manager import load_portfolio
+        from hkstock.trading.auto_trader import auto_trade, get_trade_summary
+        from hkstock.trading.position_manager import load_portfolio
         trade_logs = auto_trade(data)
         if trade_logs:
             print("\n[模拟交易]")
@@ -226,8 +227,8 @@ def daily_run():
     print("\n" + report)
 
     # 保存
-    os.makedirs("data", exist_ok=True)
-    report_path = f"data/report_{datetime.now().strftime('%Y%m%d')}.txt"
+    os.makedirs(os.path.join(_project_root, "data"), exist_ok=True)
+    report_path = os.path.join(_project_root, "data", f"report_{datetime.now().strftime('%Y%m%d')}.txt")
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(report)
     print(f"\n[报告] 已保存 {report_path}")

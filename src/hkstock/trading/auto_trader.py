@@ -8,13 +8,13 @@
 """
 import logging
 from datetime import datetime
-import config
-from position_manager import (
+from hkstock.core import config
+from hkstock.trading.position_manager import (
     load_portfolio, save_portfolio,
     check_position_limits, check_stop_loss_take_profit,
     calc_hold_days, calc_trade_fee_hkd, get_hkd_to_cny,
 )
-from real_data import fetch_realtime
+from hkstock.data.real_data import fetch_realtime
 
 
 # ── 交易执行 ──────────────────────────────────────────────
@@ -233,7 +233,7 @@ def auto_trade(analysis_data: dict) -> list[str]:
 
         # 板块集中度检查
         try:
-            from sector_analyzer import get_sector
+            from hkstock.analysis.sector import get_sector
             sector = get_sector(s["ticker"], s.get("name", ""))
             sector_count = sum(
                 1 for t in portfolio["positions"]
@@ -362,7 +362,7 @@ def _check_correlation(ticker: str, portfolio: dict) -> bool:
     if not portfolio["positions"]:
         return False
     try:
-        from real_data import fetch_history
+        from hkstock.data.real_data import fetch_history
         new_df = fetch_history(ticker, days=30)
         if new_df is None or len(new_df) < 20:
             return False

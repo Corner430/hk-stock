@@ -23,21 +23,20 @@
 """
 import sys
 import os
-sys.path.insert(0, os.path.dirname(__file__))
 
 import math
 import copy
 from datetime import datetime as _dt
 import pandas as pd
 import numpy as np
-from real_data import fetch_history
-from indicators import (
+from hkstock.data.real_data import fetch_history
+from hkstock.analysis.indicators import (
     calc_rsi, calc_macd, calc_bollinger, calc_adx, calc_atr,
     calc_momentum, resample_to_weekly,
 )
-from position_manager import calc_trade_fee_hkd
-from sector_analyzer import get_sector
-import config
+from hkstock.trading.position_manager import calc_trade_fee_hkd
+from hkstock.analysis.sector import get_sector
+from hkstock.core import config
 
 # ── 常量 ────────────────────────────────────────────────────
 HKD_CNY_RATE = 0.88             # 回测固定汇率（不调 API）
@@ -635,7 +634,7 @@ def run_backtest(mode="full", days=90, window_size=7, tickers=None):
     mode: "full"=完整回测, "weekly"=最近一周, "multiwindow"=多区间
     """
     if tickers is None:
-        from stock_screener import get_dynamic_watchlist
+        from hkstock.strategy.screener import get_dynamic_watchlist
         tickers, _ = get_dynamic_watchlist(top_n=100)
         if not tickers:
             raise RuntimeError("动态筛选未返回任何股票，回测终止")

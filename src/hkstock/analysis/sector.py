@@ -6,7 +6,8 @@ P1-B：行业板块热度检测
 import requests
 import re
 import logging
-from real_data import HEADERS
+from hkstock.core import config as cfg
+from hkstock.data.real_data import HEADERS
 
 # 港股主要板块分类（股票代码 → 板块）
 SECTOR_MAP = {
@@ -228,7 +229,6 @@ def sector_score_boost(ticker: str, hot_sectors: list[str], name: str = "",
     - 热门板块：+1 ~ +SECTOR_HEAT_BOOST_MAX（根据板块涨幅分级）
     - 冷门板块：SECTOR_COLD_PENALTY_MAX ~ -1
     """
-    import config as cfg
     sector = get_sector(ticker, name)
 
     if sector in hot_sectors:

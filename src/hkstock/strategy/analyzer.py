@@ -6,9 +6,9 @@ from datetime import datetime
 import json
 import os
 import time
-from real_data import fetch_history, fetch_realtime
-from indicators import calc_rsi, calc_macd, calc_bollinger, calc_adx, calc_atr, calc_momentum
-from position_manager import get_hkd_to_cny as _get_rate
+from hkstock.data.real_data import fetch_history, fetch_realtime
+from hkstock.analysis.indicators import calc_rsi, calc_macd, calc_bollinger, calc_adx, calc_atr, calc_momentum
+from hkstock.trading.position_manager import get_hkd_to_cny as _get_rate
 
 # 股票名称缓存（由动态筛选填充）
 NAME_CACHE = {}
@@ -259,7 +259,7 @@ def analyze_stock(ticker, config):
 def run_analysis(config, use_dynamic=True):
     """对股票进行分析：严格使用动态筛选，不使用预设列表"""
 
-    from stock_screener import get_dynamic_watchlist
+    from hkstock.strategy.screener import get_dynamic_watchlist
     watchlist, name_cache_extra = get_dynamic_watchlist(top_n=100)
     NAME_CACHE.update(name_cache_extra)
     if not watchlist:
@@ -268,7 +268,7 @@ def run_analysis(config, use_dynamic=True):
 
     # ── 注入 IPO 新股（绕过筛选器历史数据门槛）──────────────
     try:
-        from ipo_tracker import get_ipo_tickers_for_analysis
+        from hkstock.strategy.ipo_tracker import get_ipo_tickers_for_analysis
         ipo_tickers, ipo_names = get_ipo_tickers_for_analysis(min_days=15)
         existing = set(watchlist)
         new_ipo = [t for t in ipo_tickers if t not in existing]
@@ -286,7 +286,7 @@ def run_analysis(config, use_dynamic=True):
     try:
         hsi_df = fetch_stock_data("HSI.HI", days=60)
         if hsi_df is not None and len(hsi_df) >= 30:
-            from indicators import calc_rsi
+            from hkstock.analysis.indicators import calc_rsi
             hsi_close = hsi_df["Close"]
             hsi_ma10 = hsi_close.rolling(10).mean()
             hsi_ma30 = hsi_close.rolling(30).mean()
@@ -308,7 +308,7 @@ def run_analysis(config, use_dynamic=True):
 
     # 获取市场级数据（南向资金、AH溢价、VHSI等），用于仓位倍数调节
     try:
-        from market_data import get_market_signals
+        from hkstock.data.market_data import get_market_signals
         market_signals = get_market_signals()
         if market_signals.get("valid"):
             position_multiplier = market_signals.get("position_multiplier", 1.0)
@@ -332,7 +332,7 @@ def run_analysis(config, use_dynamic=True):
 
     # ── 基本面增强（第一期）──────────────────────────────
     try:
-        from fundamentals import enrich_with_fundamentals
+        from hkstock.analysis.fundamentals import enrich_with_fundamentals
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 开始基本面过滤 + 港交所公告检查...")
         enriched = []
         for r in results:
@@ -351,7 +351,7 @@ def run_analysis(config, use_dynamic=True):
     # ── 板块热度加分/减分 ──────────────────────────────
     output_sector_report = ""
     try:
-        from sector_analyzer import fetch_sector_performance, get_hot_sectors, get_cold_sectors, sector_score_boost, get_sector_report
+        from hkstock.analysis.sector import fetch_sector_performance, get_hot_sectors, get_cold_sectors, sector_score_boost, get_sector_report
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 检测板块热度...")
         sector_perf = fetch_sector_performance()
         hot_sectors = get_hot_sectors(sector_perf)
@@ -390,7 +390,7 @@ def run_analysis(config, use_dynamic=True):
 
     # ── AI 智能分析 ──────────────────────────────
     try:
-        from ai_analyzer import run_ai_analysis
+        from hkstock.analysis.ai_analyzer import run_ai_analysis
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 启动 AI 智能分析...")
         results = run_ai_analysis(results)
         ai_count = len([r for r in results if r.get("ai_analysis")])
@@ -459,14 +459,14 @@ def run_analysis(config, use_dynamic=True):
         "position_multiplier": position_multiplier,
     }
 
-    _data_dir = os.path.join(os.path.dirname(__file__), "data")
+    _data_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data")
     os.makedirs(_data_dir, exist_ok=True)
     with open(os.path.join(_data_dir, "latest.json"), "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
     # 同步写入数据库
     try:
-        from database import init_db, save_stocks_daily
+        from hkstock.data.database import init_db, save_stocks_daily
         init_db()
         save_stocks_daily(results)
     except Exception as e:
@@ -476,9 +476,7 @@ def run_analysis(config, use_dynamic=True):
     return output
 
 if __name__ == "__main__":
-    import sys
-    sys.path.insert(0, ".")
-    import config
+    from hkstock.core import config
     result = run_analysis(config)
     print(f"\n=== 分析摘要 ===")
     print(f"买入信号: {result['summary']['buy_signals']} 只")

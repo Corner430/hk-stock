@@ -1,8 +1,11 @@
 """Tests for hkstock.trading.position_manager module."""
 import json
 import pytest
+from datetime import datetime
 from hkstock.trading.position_manager import (
     calc_trade_fee_hkd,
+    calc_hold_days,
+    check_position_limits,
     load_portfolio,
     save_portfolio,
 )
@@ -92,3 +95,72 @@ class TestPortfolioLoadSave:
                         "positions": {}, "trades": [], "daily_snapshots": [],
                         "created_at": "2025-01-01"})
         assert nested.exists()
+
+
+class TestCalcHoldDays:
+    def test_recent_buy(self):
+        """A buy from today should have 0 hold days."""
+        today = datetime.now().strftime("%Y-%m-%d")
+        portfolio = {
+            "trades": [
+                {"ticker": "0700.HK", "action": "BUY", "date": today},
+            ]
+        }
+        assert calc_hold_days(portfolio, "0700.HK") == 0
+
+    def test_no_trades(self):
+        """Empty trades list should return 0."""
+        assert calc_hold_days({"trades": []}, "0700.HK") == 0
+
+    def test_ticker_not_found(self):
+        """Ticker not in trades should return 0."""
+        portfolio = {
+            "trades": [
+                {"ticker": "1211.HK", "action": "BUY", "date": "2025-01-01"},
+            ]
+        }
+        assert calc_hold_days(portfolio, "0700.HK") == 0
+
+    def test_uses_latest_buy(self):
+        """Should use the most recent BUY (reversed search)."""
+        portfolio = {
+            "trades": [
+                {"ticker": "0700.HK", "action": "BUY", "date": "2020-01-01"},
+                {"ticker": "0700.HK", "action": "SELL", "date": "2020-06-01"},
+                {"ticker": "0700.HK", "action": "BUY", "date": datetime.now().strftime("%Y-%m-%d")},
+            ]
+        }
+        days = calc_hold_days(portfolio, "0700.HK")
+        assert days == 0  # latest buy is today
+
+
+class TestCheckPositionLimits:
+    def test_can_buy_empty_portfolio(self):
+        portfolio = {
+            "total_capital_cny": 100000,
+            "cash_cny": 100000,
+            "positions": {},
+        }
+        can_buy, reason = check_position_limits(portfolio)
+        assert can_buy is True
+
+    def test_max_positions_reached(self):
+        from hkstock.core.config import MAX_POSITIONS
+        positions = {f"{i:04d}.HK": {"total_cost_cny": 1000} for i in range(MAX_POSITIONS)}
+        portfolio = {
+            "cash_cny": 50000,
+            "positions": positions,
+        }
+        can_buy, reason = check_position_limits(portfolio)
+        assert can_buy is False
+        assert "上限" in reason
+
+    def test_insufficient_cash(self):
+        from hkstock.core.config import RESERVE_CASH
+        portfolio = {
+            "cash_cny": RESERVE_CASH + 100,  # barely above reserve
+            "positions": {},
+        }
+        can_buy, reason = check_position_limits(portfolio)
+        assert can_buy is False
+        assert "不足" in reason

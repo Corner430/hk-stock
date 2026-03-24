@@ -32,6 +32,12 @@ dev = [
     "pytest-cov>=4.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+]
+
 [project.scripts]
 hkstock-daily = "hkstock.app.daily_report:daily_run"
 hkstock-cron = "hkstock.app.cron:main"

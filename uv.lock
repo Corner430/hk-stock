@@ -279,6 +279,12 @@ dev = [
     { name = "pytest-cov" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-cov" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "codebuddy-agent-sdk", specifier = ">=0.3" },
@@ -291,6 +297,12 @@ requires-dist = [
     { name = "requests", specifier = ">=2.31,<3" },
 ]
 provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-cov", specifier = ">=4.0" },
+]
 
 [[package]]
 name = "idna"

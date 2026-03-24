@@ -8,6 +8,7 @@ import os
 import time
 from hkstock.data.real_data import fetch_history, fetch_realtime
 from hkstock.analysis.indicators import calc_rsi, calc_macd, calc_bollinger, calc_adx, calc_atr, calc_momentum
+from hkstock.analysis.scoring import clamp_score, score_to_action, score_to_position_pct
 from hkstock.trading.position_manager import get_hkd_to_cny as _get_rate
 
 # 股票名称缓存（由动态筛选填充）
@@ -200,21 +201,10 @@ def analyze_stock(ticker, config):
             signals.append(f"单日跌幅{latest['change_pct']}%（放量暴跌，利空恐慌，避开）")
 
     # 生成建议（三档买入：强烈买入 / 买入 / 试探性买入）
-    if score >= 6:
-        action = "强烈买入"
-    elif score >= 4:
-        action = "买入"
-    elif score >= 3:
-        action = "试探性买入"
-    elif score <= -4:
-        action = "考虑卖出"
-    elif score <= -1:
-        action = "观望/减仓"
-    else:
-        action = "持有观望"
+    action = score_to_action(score)
 
     # 评分钳位到 [-10, +10]，防止多因子叠加导致评分通胀
-    score = max(-10, min(10, score))
+    score = clamp_score(score)
 
     latest["score"] = score
     latest["action"] = action
@@ -403,22 +393,11 @@ def run_analysis(config, use_dynamic=True):
         if r.get("score") == -99:   # 已被基本面排除，保留原标记
             continue
         # 钳位到 [-10, +10]
-        r["score"] = max(-10, min(10, r["score"]))
+        r["score"] = clamp_score(r["score"])
         # 重新映射 action
-        sc = r["score"]
-        if sc >= 6:
-            r["action"] = "强烈买入"
-        elif sc >= 4:
-            r["action"] = "买入"
-        elif sc >= 3:
-            r["action"] = "试探性买入"
-        elif sc <= -4:
-            r["action"] = "考虑卖出"
-        elif sc <= -1:
-            r["action"] = "观望/减仓"
-        else:
-            r["action"] = "持有观望"
+        r["action"] = score_to_action(r["score"])
         # 重新映射建议仓位（结合市场仓位倍数）
+        sc = r["score"]
         if sc >= 6:
             base_pos = int(config.TOTAL_CAPITAL * 0.15)
         elif sc >= 4:

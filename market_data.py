@@ -8,6 +8,9 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+# EastMoney API user token (公开接口)
+_EM_UT = "b2884a393a59ad64002292a3e90d46a5"
+
 # ── 全局缓存 ──
 _cache: dict = {}
 _CACHE_TTL = 600  # 10 分钟
@@ -45,7 +48,7 @@ def fetch_southbound_flow() -> dict:
         params = {
             "fields1": "f1,f2,f3,f4",
             "fields2": "f51,f52,f53,f54,f55,f56",
-            "ut": "b2884a393a59ad64002292a3e90d46a5",
+            "ut": _EM_UT,
             "cb": "",
             "rt": int(time.time()),
         }
@@ -96,7 +99,7 @@ def fetch_ah_premium() -> dict:
         params = {
             "secid": "100.HSAHP",
             "fields": "f43,f44,f45,f46,f47,f48,f170",
-            "ut": "b2884a393a59ad64002292a3e90d46a5",
+            "ut": _EM_UT,
         }
         resp = requests.get(url, params=params, timeout=10)
         resp.raise_for_status()
@@ -141,7 +144,7 @@ def fetch_vhsi() -> dict:
         params = {
             "secid": "100.VHSI",
             "fields": "f43,f170",
-            "ut": "b2884a393a59ad64002292a3e90d46a5",
+            "ut": _EM_UT,
         }
         resp = requests.get(url, params=params, timeout=10)
         resp.raise_for_status()
@@ -186,7 +189,7 @@ def fetch_market_activity() -> dict:
         params = {
             "secid": "100.HSI",
             "fields": "f43,f44,f45,f46,f47,f48,f49,f50,f170",
-            "ut": "b2884a393a59ad64002292a3e90d46a5",
+            "ut": _EM_UT,
         }
         resp = requests.get(url, params=params, timeout=10)
         resp.raise_for_status()
@@ -231,7 +234,7 @@ def fetch_us_overnight() -> dict:
             params = {
                 "secid": secid,
                 "fields": "f43,f170",
-                "ut": "b2884a393a59ad64002292a3e90d46a5",
+                "ut": _EM_UT,
             }
             resp = requests.get(url, params=params, timeout=10)
             resp.raise_for_status()

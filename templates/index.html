@@ -262,12 +262,12 @@ function drawNavChart(snapshots){
   });
 }
 
-function drawPnlChart(snapshots){
+function drawPnlChart(snapshots,initialCapital){
   const labels=snapshots.map(s=>s.date.slice(5));
   const pnls=snapshots.map((s,i)=>{
-    const ret=s.total_return_cny||(s.total_value_cny-100000)||0;
+    const ret=s.total_return_cny||(s.total_value_cny-initialCapital)||0;
     if(i===0) return ret;
-    const prevRet=snapshots[i-1].total_return_cny||(snapshots[i-1].total_value_cny-100000)||0;
+    const prevRet=snapshots[i-1].total_return_cny||(snapshots[i-1].total_value_cny-initialCapital)||0;
     return ret - prevRet;
   });
   const colors=pnls.map(p=>p>=0?'rgba(63,185,80,0.7)':'rgba(248,81,73,0.7)');
@@ -318,10 +318,11 @@ async function loadAll(){
     // ── 投资组合 ──
     if(p && !p.error){
       const snap=p.daily_snapshots||[];
+      const initialCapital=p.total_capital_cny||100000;
       const last=snap[snap.length-1]||{};
       const pnl=last.total_return_cny||0;
       const pct=last.total_return_pct||0;
-      document.getElementById('totalVal').textContent='¥'+(last.total_value_cny||100000).toLocaleString();
+      document.getElementById('totalVal').textContent='¥'+(last.total_value_cny||initialCapital).toLocaleString();
       const pnlEl=document.getElementById('pnlVal');
       pnlEl.textContent=(pnl>=0?'+':'')+Math.round(pnl).toLocaleString();
       pnlEl.style.color=pnl>=0?'#3fb950':'#f85149';
@@ -333,7 +334,7 @@ async function loadAll(){
 
       if(snap.length>0){
         drawNavChart(snap);
-        drawPnlChart(snap);
+        drawPnlChart(snap,initialCapital);
       }
 
       // 持仓表格

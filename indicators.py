@@ -17,7 +17,7 @@ def calc_rsi(series, period=14):
     # Wilder 平滑 = EMA with alpha=1/period
     avg_gain = gain.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
-    rs = avg_gain / avg_loss
+    rs = avg_gain / avg_loss.replace(0, 1e-10)
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
@@ -61,7 +61,7 @@ def calc_adx(high, low, close, period=14):
     atr = tr.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
     plus_di = 100 * (plus_dm.ewm(alpha=1/period, min_periods=period, adjust=False).mean() / atr)
     minus_di = 100 * (minus_dm.ewm(alpha=1/period, min_periods=period, adjust=False).mean() / atr)
-    dx = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di))
+    dx = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, 1e-10))
     adx = dx.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
     return adx, plus_di, minus_di
 

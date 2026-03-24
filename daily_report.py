@@ -4,6 +4,7 @@
 """
 import os
 import sys
+import logging
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -56,8 +57,8 @@ def generate_report(data: dict, portfolio=None) -> str:
         from ipo_tracker import load_ipo_watchlist, get_ipo_report
         ipo_wl     = load_ipo_watchlist()
         ipo_report = get_ipo_report(ipo_wl)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning("IPO报告生成失败: %s", e)
 
     # ── 大盘情绪 ─────────────────────────────────────────
     mkt_emoji = "⚠️"
@@ -88,7 +89,11 @@ def generate_report(data: dict, portfolio=None) -> str:
     if alerts:
         lines.append("")
         for a in alerts:
-            lines.append(a["msg"])
+            lines.append(
+                f"{'🔴' if '止损' in a['action'] else '🟡'} {a['name']}（{a['ticker']}）"
+                f"{a['action']}  {a['pnl_pct']:+.1f}%  ¥{a['pnl_cny']:+.0f}  "
+                f"现价{a['current_price']:.3f}  成本{a['avg_cost']:.3f}  持{a['hold_days']}天"
+            )
 
     # 仓位限制提示
     if not can_buy:
@@ -114,8 +119,8 @@ def generate_report(data: dict, portfolio=None) -> str:
                 sec = get_sector(s["ticker"])
                 if sec in hot_sectors:
                     sector = f" 🔥{sec}"
-            except Exception:
-                pass
+            except Exception as e:
+                logging.warning("获取板块信息失败 %s: %s", s["ticker"], e)
             sig = s["signals"][0] if s.get("signals") else "技术指标综合"
             lines.append(f"\n{i}. {s['name']}（{s['ticker']}）评分{s['score']:+d}{sector}")
             lines.append(f"   {s['price']} HKD {chg_s} | RSI {s['rsi']:.1f}")
@@ -170,8 +175,8 @@ def generate_report(data: dict, portfolio=None) -> str:
         from auto_trader import get_trade_summary
         from position_manager import load_portfolio as _lp
         lines.append("\n" + get_trade_summary(_lp()))
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning("获取交易摘要失败: %s", e)
 
     # 板块热度
     if sector_report:

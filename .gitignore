@@ -27,3 +27,13 @@ data/report_*.txt
 # OS
 .DS_Store
 Thumbs.db
+
+# Test coverage
+.coverage
+htmlcov/
+*.cover
+
+# Test coverage
+.coverage
+htmlcov/
+*.cover

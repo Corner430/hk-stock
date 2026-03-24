@@ -448,6 +448,8 @@ def _bt_sell(portfolio, ticker, price_hkd, shares, date, reason, trades_log):
     portfolio["total_fees_cny"] = portfolio.get("total_fees_cny", 0) + fee_hkd * HKD_CNY_RATE
 
     # PnL 计算
+    if pos["shares"] <= 0:
+        return 0, 0
     cost_per_share_cny = pos["total_cost_cny"] / pos["shares"]
     sell_per_share_cny = net_cny / shares
     pnl_pct = (sell_per_share_cny / cost_per_share_cny - 1) * 100 if cost_per_share_cny > 0 else 0

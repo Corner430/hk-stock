@@ -107,7 +107,10 @@ def api_db_trades():
         from database import get_trade_history
         run_id = request.args.get("run_id")
         ticker = request.args.get("ticker")
-        limit = int(request.args.get("limit", 50))
+        try:
+            limit = max(1, min(500, int(request.args.get("limit", 50))))
+        except (ValueError, TypeError):
+            limit = 50
         return jsonify(get_trade_history(run_id, ticker, limit))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -128,7 +131,10 @@ def api_db_stock():
     try:
         from database import get_stock_history
         ticker = request.args.get("ticker", "0700.HK")
-        days = int(request.args.get("days", 30))
+        try:
+            days = max(1, min(365, int(request.args.get("days", 30))))
+        except (ValueError, TypeError):
+            days = 30
         return jsonify(get_stock_history(ticker, days))
     except Exception as e:
         return jsonify({"error": str(e)}), 500

@@ -440,8 +440,8 @@ def fetch_stock_news_sentiment(stock_name: str, stock_ticker: str) -> tuple[int,
                         score += 1
                         notes.append(f"✅ 利好公告：{announcement[:50]}")
                         break
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning("获取个股公告失败 %s: %s", stock_ticker, e)
 
     # 从全市场新闻里搜索该股名称
     try:
@@ -463,8 +463,8 @@ def fetch_stock_news_sentiment(stock_name: str, stock_ticker: str) -> tuple[int,
                         score += 1
                         notes.append(f"📰 相关新闻：{title[:50]}")
                         break
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning("获取市场新闻失败 %s: %s", stock_ticker, e)
 
     return max(-2, min(2, score)), notes
 

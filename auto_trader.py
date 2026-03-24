@@ -6,6 +6,7 @@
 - 每日记录净值快照
 - 盘中持仓检查（独立于完整分析）
 """
+import logging
 from datetime import datetime
 import config
 from position_manager import (
@@ -131,14 +132,16 @@ def auto_trade(analysis_data: dict) -> list[str]:
 
     # Step2: 持仓中信号转弱 → 分级卖出
     stock_map = {s["ticker"]: s for s in stocks}
+    # 批量获取持仓实时价格（避免 N+1 HTTP 调用）
+    _held_tickers = [t for t in portfolio["positions"] if t in stock_map]
+    _held_prices = fetch_realtime(_held_tickers) if _held_tickers else {}
     for ticker in list(portfolio["positions"].keys()):
         stock_data = stock_map.get(ticker)
         if not stock_data:
             continue
         pos = portfolio["positions"][ticker]
         sc = stock_data.get("score", 0)
-        prices = fetch_realtime([ticker])
-        price = prices.get(ticker, {}).get("price", pos["avg_cost_hkd"])
+        price = _held_prices.get(ticker, {}).get("price", pos["avg_cost_hkd"])
         hold_days = calc_hold_days(portfolio, ticker)
         pnl_pct = (price / pos["avg_cost_hkd"] - 1) * 100 if pos["avg_cost_hkd"] > 0 else 0
 
@@ -239,8 +242,8 @@ def auto_trade(analysis_data: dict) -> list[str]:
             if sector_count >= 2:
                 logs.append(f"跳过 {s.get('name', s['ticker'])}：{sector}板块已持{sector_count}只")
                 continue
-        except Exception:
-            pass
+        except Exception as e:
+            logging.warning("板块集中度检查失败: %s", e)
 
         ticker = s["ticker"]
         name = s.get("name", ticker)
@@ -374,8 +377,8 @@ def _check_correlation(ticker: str, portfolio: dict) -> bool:
                 corr = new_returns.loc[common].corr(pos_returns.loc[common])
                 if corr > 0.85:
                     return True
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning("相关性检查失败: %s", e)
     return False
 
 

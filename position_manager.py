@@ -2,7 +2,10 @@
 仓位管理 + 持仓跟踪 + 止损止盈检测 + 交易费用计算 + 汇率
 """
 import json
-import fcntl
+try:
+    import fcntl
+except ImportError:
+    fcntl = None  # Windows: file locking not available
 import math
 import os
 import time
@@ -59,11 +62,13 @@ def calc_trade_fee_hkd(amount_hkd: float) -> float:
 def load_portfolio() -> dict:
     if os.path.exists(PORTFOLIO_FILE):
         with open(PORTFOLIO_FILE, "r", encoding="utf-8") as f:
-            fcntl.flock(f, fcntl.LOCK_SH)  # 共享读锁
+            if fcntl:
+                fcntl.flock(f, fcntl.LOCK_SH)
             try:
                 return json.load(f)
             finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
+                if fcntl:
+                    fcntl.flock(f, fcntl.LOCK_UN)
     return {
         "total_capital_cny": config.TOTAL_CAPITAL,
         "cash_cny": config.TOTAL_CAPITAL,
@@ -75,13 +80,21 @@ def load_portfolio() -> dict:
 
 
 def save_portfolio(portfolio: dict):
-    os.makedirs(os.path.dirname(PORTFOLIO_FILE), exist_ok=True)
-    with open(PORTFOLIO_FILE, "w", encoding="utf-8") as f:
-        fcntl.flock(f, fcntl.LOCK_EX)  # 独占写锁
-        try:
+    import tempfile
+    dir_path = os.path.dirname(PORTFOLIO_FILE)
+    os.makedirs(dir_path, exist_ok=True)
+    # 原子写入：先写临时文件再 rename，避免文件截断竞态
+    fd, tmp_path = tempfile.mkstemp(dir=dir_path, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(portfolio, f, ensure_ascii=False, indent=2)
-        finally:
-            fcntl.flock(f, fcntl.LOCK_UN)
+        os.replace(tmp_path, PORTFOLIO_FILE)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 # ── 仓位限制检查 ──────────────────────────────────────────

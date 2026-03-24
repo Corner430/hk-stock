@@ -31,5 +31,18 @@ jobs:
           import database
           import indicators
           import real_data
-          print('All core modules imported successfully')
+          import analyzer
+          import auto_trader
+          import backtest
+          import daily_report
+          import dashboard
+          import fundamentals
+          import hkstock_cron
+          import ipo_tracker
+          import market_data
+          import position_manager
+          import sector_analyzer
+          import stock_screener
+          import ai_analyzer
+          print('All 17 modules imported successfully')
           "

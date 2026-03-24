@@ -428,9 +428,6 @@ def run_ai_analysis(stocks: list[dict]) -> list[dict]:
         else:
             print("[WARN] CODEBUDDY_API_KEY 未设置，请在 .env 文件中配置")
             return stocks
-    if not os.environ.get("CODEBUDDY_INTERNET_ENVIRONMENT"):
-        os.environ["CODEBUDDY_INTERNET_ENVIRONMENT"] = "internal"
-
     try:
         ai_results = asyncio.run(ai_batch_analyze(stocks))
         if ai_results:

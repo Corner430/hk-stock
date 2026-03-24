@@ -82,7 +82,7 @@ def api_refresh_status():
 
 @app.route("/api/intraday-check", methods=["POST"])
 def api_intraday_check():
-    """盘中持仓检查（止损/止盈），供 OpenClaw cron 调用"""
+    """盘中持仓检查（止损/止盈），供 hkstock_cron 定时调用"""
     try:
         from auto_trader import run_intraday_check
         logs = run_intraday_check()

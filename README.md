@@ -1,5 +1,7 @@
 # 港股量化分析 & 模拟交易系统
 
+![banner](assets/images/banner.png)
+
 基于多因子评分的港股量化分析系统。每日自动扫描全市场，经技术面、基本面、市场数据、板块热度、大盘趋势、AI 多模型集成六重筛选后执行模拟交易。行情数据来自真实市场接口，交易执行为本地模拟，不连接任何券商。
 
 ![CI](https://github.com/Corner430/hk-stock/actions/workflows/ci.yml/badge.svg)
@@ -45,34 +47,9 @@ uv run hkstock-dashboard            # 启动 Web 看板（:8888）
 
 ## 系统架构
 
-```
-全市场扫描 (screener)              IPO 新股 (ipo_tracker)
-        \                               /
-         --------> 合并标的池 -------->
-                       |
-              技术分析 (analyzer)
-              RSI / MACD / BB / ADX / 均线 / 成交量 / 动量
-              + 量价背离检测
-              + 恒生指数趋势检测（牛/熊/中性）
-                       |
-              市场数据 (market_data)
-              南向资金 / AH溢价 / VHSI / 卖空 / 美股隔夜 / MSCI
-              → 仓位倍数 0.3x ~ 1.2x
-                       |
-              基本面过滤 (fundamentals)
-              PE(行业相对) / PB / ROE / PEG / FCF / 港交所公告 / 新闻舆情
-                       |
-              板块热度加分/减分 (sector)
-              热门 +1~+3 / 冷门 -1~-2
-                       |
-              AI 集成分析 (ai_analyzer)
-              5 模型并行 → 加权投票
-                       |
-              交易执行 (auto_trader + position_manager)
-              分批建仓 / 分批止盈 / 回撤保护 / ATR仓位 / 碎股处理
-                       |
-              报告 + 持久化 (daily_report + database)
-```
+![系统架构](assets/images/architecture.png)
+
+全市场扫描与 IPO 新股合并标的池后，依次经过技术分析、市场数据、基本面过滤、板块热度、AI 集成分析，最终由交易引擎执行分批建仓/止盈/回撤保护，并生成每日报告。
 
 ## 策略详解
 
@@ -88,6 +65,8 @@ uv run hkstock-dashboard            # 启动 Web 看板（:8888）
 6. 自由流通比例 < 15% 的股票在基本面阶段排除
 
 ### 评分
+
+![评分体系](assets/images/scoring-system.png)
 
 最终评分由以下维度叠加，>= 7 分触发买入：
 
@@ -119,33 +98,17 @@ uv run hkstock-dashboard            # 启动 Web 看板（:8888）
 | PEG | < 0.5 | < 1.0 | | > 3.0 | |
 | FCF Yield | > 8% | > 5% | < 0 | | |
 
-另有港交所公告情绪（-3 ~ +3）和新闻舆情（-2 ~ +2）叠加。
-
-**大盘趋势**
-
-拉取恒生指数 MA10/MA30 + RSI：偏空时所有正评分 -2，偏多时不额外加分。
-
-**市场数据信号**
-
-南向资金、AH溢价指数、VHSI波动率、卖空比率、美股隔夜 → 综合打分 → 仓位倍数（bearish 时仅用 30% 仓位，bullish 时可到 120%）。MSCI 调仓窗口期额外减分。
-
-**板块热度**
-
-15 大板块（200+ 关键词匹配），热门板块个股 +1 ~ +3（按涨幅分级），冷门板块 -1 ~ -2。
+另有港交所公告情绪（-3 ~ +3）和新闻舆情（-2 ~ +2）叠加。大盘偏空时所有正评分 -2。市场数据信号综合打分后映射为仓位倍数（0.3x ~ 1.2x）。15 大板块（200+ 关键词匹配），热门板块 +1 ~ +3，冷门板块 -1 ~ -2。
 
 **AI 多模型集成（-3 ~ +3）**
 
-| 模型 | 权重 |
-|------|------|
-| Claude-Opus-4.6 | 1.5 |
-| GPT-5.2 | 1.3 |
-| Gemini-3.1-Pro | 1.3 |
-| Claude-Sonnet-4.6 | 1.2 |
-| DeepSeek-V3.1 | 1.0 |
+![AI 多模型集成](assets/images/ai-integration.png)
 
 5 个模型并行调用，3 个返回后额外等 30 秒截止。加权平均分 1-10 映射为 -3 ~ +3 调整分。模型一致性 < 50% 时调整分减半。
 
 ### 交易规则
+
+![交易规则](assets/images/trading-rules.png)
 
 **买入**（以下条件全部满足）：
 
@@ -156,33 +119,21 @@ uv run hkstock-dashboard            # 启动 Web 看板（:8888）
 5. 现金扣除 `RESERVE_CASH` 后充足
 6. 与现有持仓 30 天日收益率相关性 < 0.85
 7. 同板块已持仓 < 2 只
-8. 分批建仓：首批 50%，后续 30% + 20%（记录待建仓计划）
+8. 分批建仓：首批 50%，后续 30% + 20%
 
 **卖出**（分级触发）：
 
 | 条件 | 动作 |
 |------|------|
 | 亏损 >= 8% | 止损清仓 |
-| 盈利 >= 10% | 分批止盈：卖出 1/3 |
-| 盈利 >= 18% | 分批止盈：再卖 1/3 |
-| 盈利 >= 25% | 分批止盈：清仓 |
+| 盈利 >= 10% / 18% / 25% | 分批止盈：1/3 → 1/3 → 清仓 |
 | 盈利 > 10%，跌破最高价 x 95% | 跟踪止损 |
 | 盈利 > 5%，跌破成本 x 102% | 保本止损 |
 | 持仓 >= 25 天，涨幅 < 2% | 时间止损 |
 | 组合回撤 >= 12% | 强制减仓 50%（全部持仓） |
 | 评分 <= -5 或出现死叉 | 信号转弱清仓 |
-| 评分 <= -3，持仓 >= 3 天 | 减仓 50% |
-| 评分 <= -1，持仓 >= 5 天，亏 > 3% | 减仓 50% |
 
 卖出时自动处理碎股：如剩余不足一手则全部卖出。
-
-**组合回撤保护**：
-
-| 回撤幅度 | 动作 |
-|----------|------|
-| >= 5% | 发出警告 |
-| >= 8% | 停止新开仓 |
-| >= 12% | 强制全部持仓减仓 50% |
 
 ### 费用
 
@@ -201,12 +152,9 @@ HKD/CNY 汇率从 open.er-api.com 实时获取，4 小时缓存。
 
 ## 调度
 
-每个交易日自动运行，跳过周末和港股假期（`src/hkstock/core/config.py` 中 `HK_HOLIDAYS`，需每年手动更新）：
+![调度时间线](assets/images/schedule.png)
 
-| 时间 | 动作 |
-|------|------|
-| 09:45 / 12:00 / 14:00 | 盘中持仓检查：止损/止盈/跟踪止损/时间止损/分批止盈 |
-| 16:30 | 完整分析 + 交易 + 报告生成 |
+每个交易日自动运行，跳过周末和港股假期（`src/hkstock/core/config.py` 中 `HK_HOLIDAYS`，需每年手动更新）。
 
 ## 回测
 
@@ -301,41 +249,15 @@ hk-stock/
       cron.py                   定时调度守护进程
       dashboard.py              Flask Web 看板（需认证）
   tests/                        测试
-    conftest.py                共享 fixtures（tmp_data_dir / 样本数据）
-    unit/                      单元测试
-      test_config.py           配置常量
-      test_indicators.py       技术指标计算
-      test_io.py               JSON 文件 I/O
-      test_scoring.py          评分引擎
-      test_position_manager.py 仓位管理 + 费用
-      test_sector.py           板块分类
-      test_database.py         SQLite CRUD
-      test_real_data.py        ticker 转换
-      test_cron.py             交易日判断
-    integration/
-      test_imports.py          全模块可导入验证
   data/                         运行时数据（git 忽略）
-    portfolio.json               模拟持仓
-    latest.json                  最新分析结果
-    hkstock.db                   SQLite 数据库
-    ipo_watchlist.json           IPO 观察池
-    report_*.txt                 历史报告
 ```
 
 ## 测试
 
 ```bash
-# 安装开发依赖
-uv sync --dev
-
-# 运行全部测试
-uv run pytest tests/ -v
-
-# 运行单个模块
-uv run pytest tests/unit/test_scoring.py -v
-
-# 带覆盖率
-uv run pytest tests/ --cov=hkstock --cov-report=term-missing
+uv sync --dev                                              # 安装开发依赖
+uv run pytest tests/ -v                                    # 运行全部测试
+uv run pytest tests/ --cov=hkstock --cov-report=term-missing  # 带覆盖率
 ```
 
 ## 持续集成
@@ -344,8 +266,6 @@ GitHub Actions CI 在每次 push/PR 时自动运行，测试矩阵覆盖 Python 
 
 ## 数据源与免责
 
-**数据来源**：
-
 | 数据 | 来源 | 说明 |
 |------|------|------|
 | 实时行情 / K 线 / 手数 | 腾讯股票接口 (`sqt.gtimg.cn`) | 非官方公开接口，无需 API Key |
@@ -353,8 +273,6 @@ GitHub Actions CI 在每次 push/PR 时自动运行，测试矩阵覆盖 Python 
 | HKD/CNY 汇率 | `open.er-api.com` | 免费汇率接口，4 小时缓存 |
 
 以上均为**非官方接口**，无 SLA 保证，可能随时变更或中断。
-
-**免责声明**：
 
 - 本系统使用**真实市场数据**进行分析，但交易执行为**本地模拟**，不连接任何券商，不产生实际交易
 - 投资有风险，系统评分仅供参考，不构成投资建议
